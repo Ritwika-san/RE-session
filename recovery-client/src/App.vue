@@ -1,0 +1,277 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import CodeEditor from './components/CodeEditor.vue';
+import { getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import { clampWithBand, getReadinessColor } from './lib/utils';
+
+const authEmail = ref('demo@example.com');
+const authPassword = ref('password123');
+const isLoading = ref(false);
+const isAuthLoading = ref(false);
+const authError = ref('');
+const session = ref<RecoverySession | null>(null);
+const recovery = ref<RecoveryPayload | null>(null);
+const user = ref<any>(null);
+const activeCategory = ref<RecoveryCategory>('code');
+const codeSource = ref('');
+const runOutput = ref('');
+const runLoading = ref(false);
+const answerSheet = ref([
+  { label: 'Full name', value: 'Jordan Rivers' },
+  { label: 'Email', value: 'jordan.rivers@example.com' },
+  { label: 'Reason for application', value: 'Critical restart and continuity test' },
+]);
+const emailDraft = ref('Hi team,\n\nI am finalizing the handoff for the prototype and wanted to confirm that the latest update is ready.');
+const attachmentUrl = ref('https://example.com/download-file.pdf');
+const sessionSignal = ref('');
+
+const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
+const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
+
+async function handleSignIn() {
+  isAuthLoading.value = true;
+  authError.value = '';
+  try {
+    const signedInUser = await signInWithEmail(authEmail.value, authPassword.value);
+    user.value = signedInUser;
+    await loadSessionAndRecovery();
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Unable to sign in';
+  } finally {
+    isAuthLoading.value = false;
+  }
+}
+
+async function handleSignOut() {
+  try {
+    await signOutUser();
+    user.value = null;
+    recovery.value = null;
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Unable to sign out';
+  }
+}
+
+async function loadRecovery() {
+  if (!session.value) return;
+  isLoading.value = true;
+  try {
+    const currentSession = session.value;
+    const result = await fetchRecoveryForSession(currentSession.id);
+    recovery.value = result;
+    activeCategory.value = result.category || 'code';
+    sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
+    codeSource.value = result.checkpoint_data?.draft ? String(result.checkpoint_data.draft) : '';
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Unable to fetch recovery data';
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function loadSessionAndRecovery() {
+  session.value = await getActiveRecoverySession();
+  if (session.value) await loadRecovery();
+}
+
+async function executeCode() {
+  runLoading.value = true;
+  runOutput.value = '';
+  try {
+    const result = await runPistonCode('javascript', codeSource.value);
+    const stdout = result.run?.stdout || '';
+    const stderr = result.run?.stderr || '';
+    runOutput.value = stdout || stderr || 'No output returned';
+  } catch (error) {
+    runOutput.value = error instanceof Error ? error.message : 'Unable to run code';
+  } finally {
+    runLoading.value = false;
+  }
+}
+
+function copyAnswer(value: string) {
+  navigator.clipboard?.writeText(value).catch(() => {
+    runOutput.value = 'Clipboard write was blocked by the browser.';
+  });
+}
+
+function downloadAttachment() {
+  const anchor = document.createElement('a');
+  anchor.href = attachmentUrl.value;
+  anchor.download = 'recovered-attachment.pdf';
+  anchor.target = '_blank';
+  anchor.rel = 'noopener';
+  anchor.click();
+}
+
+function normalizeCategory(category: RecoveryCategory) {
+  return {
+    code: 'Code',
+    email: 'Email',
+    form: 'Form',
+    doc_notion: 'Doc / Notion',
+    terminal: 'Terminal',
+    autosave: 'Autosave',
+  }[category] ?? 'Unknown';
+}
+
+onMounted(async () => {
+  const currentUser = await getSupabaseSession();
+  user.value = currentUser?.user ?? null;
+  if (currentUser?.user) {
+    await loadSessionAndRecovery();
+  }
+});
+</script>
+
+<template>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Critical task recovery</p>
+        <h1>RE-session</h1>
+      </div>
+      <div class="topbar-actions">
+        <button v-if="user" class="secondary-button" @click="handleSignOut">Sign out</button>
+      </div>
+    </header>
+
+    <main v-if="!user" class="auth-panel">
+      <div class="panel">
+        <h2>Sign in to continue</h2>
+        <label>
+          Email
+          <input v-model="authEmail" type="email" />
+        </label>
+        <label>
+          Password
+          <input v-model="authPassword" type="password" />
+        </label>
+        <button class="primary-button" :disabled="isAuthLoading" @click="handleSignIn">
+          {{ isAuthLoading ? 'Signing in…' : 'Sign in' }}
+        </button>
+        <p v-if="authError" class="status-error">{{ authError }}</p>
+      </div>
+    </main>
+
+    <main v-else class="dashboard">
+      <section class="panel recovery-header">
+        <div>
+          <p class="eyebrow">Task</p>
+          <h2>{{ session?.task_name || 'No active recovery session' }}</h2>
+        </div>
+        <div class="readiness-card">
+          <span class="readiness-label">Readiness</span>
+          <strong :style="{ color: readinessColor }">{{ recovery?.readiness_score ?? 0 }}%</strong>
+          <span class="readiness-band" :class="readinessBand">{{ readinessBand }}</span>
+        </div>
+      </section>
+
+      <section class="panel summary-panel">
+        <div class="summary-block">
+          <p class="eyebrow">Category</p>
+          <h3>{{ normalizeCategory(activeCategory) }}</h3>
+        </div>
+        <div class="summary-block">
+          <p class="eyebrow">Last checkpoint</p>
+          <h3>{{ sessionSignal || 'No checkpoint yet' }}</h3>
+        </div>
+        <div class="summary-block">
+          <p class="eyebrow">Latest briefing</p>
+          <h3>{{ recovery?.briefing_text || 'No briefing available yet.' }}</h3>
+        </div>
+      </section>
+
+      <section class="panel actions-panel">
+        <div class="thumbnail-wrap">
+          <img
+            v-if="recovery?.latest_screenshot_url"
+            :src="recovery.latest_screenshot_url"
+            alt="Latest checkpoint screenshot"
+          />
+          <div v-else class="empty-thumb">No screenshot captured</div>
+        </div>
+        <div class="action-stack">
+          <button class="primary-button" @click="loadRecovery" :disabled="isLoading">
+            {{ isLoading ? 'Recovering…' : 'Recover this task' }}
+          </button>
+          <button class="secondary-button" @click="() => activeCategory = 'code'">Review code</button>
+          <button class="secondary-button" @click="() => activeCategory = 'form'">Review form</button>
+        </div>
+      </section>
+
+      <section class="panel view-panel">
+        <div v-if="activeCategory === 'code'" class="category-view">
+          <h3>Code recovery</h3>
+          <div v-if="codeSource" class="editor-shell">
+            <CodeEditor v-model="codeSource" />
+          </div>
+          <div v-else class="empty-thumb">No code checkpoint captured yet</div>
+          <div class="button-row">
+            <button class="primary-button" @click="executeCode" :disabled="runLoading">
+              {{ runLoading ? 'Running…' : 'Run' }}
+            </button>
+          </div>
+          <pre class="output-box" v-if="runOutput">{{ runOutput }}</pre>
+        </div>
+
+        <div v-else-if="activeCategory === 'email'" class="category-view">
+          <h3>Email recovery</h3>
+          <div class="field-row">
+            <label>To</label>
+            <input value="team@criticalproject.example" />
+          </div>
+          <div class="field-row">
+            <label>Subject</label>
+            <input value="Prototype handoff update" />
+          </div>
+          <textarea v-model="emailDraft" rows="10"></textarea>
+          <div class="button-row">
+            <button class="primary-button">Send</button>
+            <button class="secondary-button" @click="downloadAttachment">Download recovered attachment</button>
+          </div>
+        </div>
+
+        <div v-else-if="activeCategory === 'form'" class="category-view answer-sheet-view">
+          <h3>Recovered form answer sheet</h3>
+          <div v-for="item in answerSheet" :key="item.label" class="answer-row">
+            <div>
+              <span class="answer-label">{{ item.label }}</span>
+              <div class="answer-value">{{ item.value }}</div>
+            </div>
+            <button class="copy-button" @click="copyAnswer(item.value)">Copy</button>
+          </div>
+          <div class="button-row">
+            <button class="secondary-button">Open original site</button>
+            <button class="secondary-button" @click="downloadAttachment">Download recovered file</button>
+          </div>
+        </div>
+
+        <div v-else-if="activeCategory === 'doc_notion'" class="category-view">
+          <h3>Document / Notion recovery</h3>
+          <a href="https://www.notion.so/" target="_blank" rel="noopener">Open original document</a>
+          <p>The source document was captured as a direct link. Only the original file link is restored here.</p>
+        </div>
+
+        <div v-else-if="activeCategory === 'terminal'" class="category-view">
+          <h3>Terminal replay</h3>
+          <ul class="terminal-list">
+            <li><strong>12:14</strong> npm install</li>
+            <li><strong>12:19</strong> npm run dev -- --host</li>
+            <li><strong>12:23</strong> git add . && git commit -m "prototype checkpoint"</li>
+          </ul>
+          <p class="small-note">This is a read-only historical replay reference and is not a resumable process.</p>
+        </div>
+
+        <div v-else-if="activeCategory === 'autosave'" class="category-view">
+          <h3>Local autosave</h3>
+          <p>Last autosave captured 2 minutes ago. This file is treated as a freshness-limited reference and should be reopened in a generic editor if you choose to continue.</p>
+          <div class="autosave-card">
+            <strong>Path:</strong> ~/Documents/critical-handoff/notes.docx
+          </div>
+          <button class="secondary-button">Export back to original format</button>
+        </div>
+      </section>
+    </main>
+  </div>
+</template>

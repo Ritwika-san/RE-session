@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RE-session settings</title>
+    <style>
+      :root {
+        --bg: #eef0ee;
+        --ink: #1c1e1c;
+        --surface: #ffffff;
+        --border: #d8dbd8;
+        --accent-safe: #2f6f5e;
+        --accent-warning: #b5651d;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, "Segoe UI", sans-serif;
+      }
+      .wrap { width: min(640px, 100%); margin: 0 auto; padding: 40px 24px; }
+      .panel { padding: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+      h1 { margin: 0 0 8px; font-size: 1.5rem; }
+      .intro { margin: 0 0 24px; color: rgba(28, 30, 28, 0.75); line-height: 1.5; }
+      .field { display: grid; gap: 6px; margin-bottom: 16px; }
+      label { font-size: 0.85rem; font-weight: 600; }
+      input, button { min-height: 44px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; }
+      button { cursor: pointer; background: var(--accent-safe); color: white; border-color: var(--accent-safe); }
+      .status { min-height: 1.3em; margin-top: 12px; }
+      .danger { color: var(--accent-warning); }
+      .ok { color: var(--accent-safe); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="panel">
+        <h1>RE-session settings</h1>
+        <p class="intro">Use the values from your Supabase project. They stay in this extension's local storage.</p>
+        <div class="field">
+          <label for="supabaseUrl">Supabase URL</label>
+          <input id="supabaseUrl" type="url" placeholder="https://your-project.supabase.co" autocomplete="url" />
+        </div>
+        <div class="field">
+          <label for="supabaseAnonKey">Supabase anon key</label>
+          <input id="supabaseAnonKey" type="password" placeholder="eyJ..." autocomplete="off" />
+        </div>
+        <button id="saveSettings" type="button">Save settings</button>
+        <div id="settingsStatus" class="status" role="status"></div>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+dist/
+build/
+*.log
+.DS_Store
+coverage/
+.vite/
+extension/icons/*.png

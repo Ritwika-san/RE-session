@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RE-session popup</title>
+    <style>
+      :root {
+        --bg: #EEF0EE;
+        --ink: #1C1E1C;
+        --surface: #FFFFFF;
+        --border: #D8DBD8;
+        --accent-safe: #2F6F5E;
+        --accent-warning: #B5651D;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 360px;
+        min-height: 360px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        padding: 16px;
+      }
+      h1 { font-size: 1.3rem; margin: 0 0 16px; }
+      .field { display: grid; gap: 6px; margin-bottom: 12px; }
+      label { font-size: 0.8rem; color: rgba(28, 30, 28, 0.75); }
+      input, select, button {
+        min-height: 44px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        background: var(--surface);
+        color: var(--ink);
+      }
+      .primary {
+        background: var(--accent-safe);
+        color: white;
+        border-color: var(--accent-safe);
+      }
+      .secondary {
+        background: var(--surface);
+      }
+      .status {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-top: 12px;
+      }
+      .status .label {
+        display: block;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+      .danger { color: var(--accent-warning); }
+      .ok { color: var(--accent-safe); }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .row button { flex: 1; }
+      .mini { font-size: 0.78rem; opacity: 0.8; }
+      .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+      .view-header h1 { margin: 0; }
+      .link-button {
+        min-height: auto;
+        border: 0;
+        padding: 4px;
+        background: transparent;
+        color: var(--accent-safe);
+        font-size: 0.8rem;
+      }
+      .settings-note { margin: -4px 0 16px; }
+      .settings-status { min-height: 1.2em; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section id="mainView">
+        <div class="view-header">
+          <h1>RE-session</h1>
+          <button id="openSettings" class="link-button" type="button">Settings</button>
+        </div>
+        <div class="field">
+          <label for="taskName">Task name</label>
+          <input id="taskName" type="text" placeholder="e.g. Final prototype draft" />
+        </div>
+
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category">
+            <option value="code">Code</option>
+            <option value="email">Email</option>
+            <option value="form">Form</option>
+            <option value="doc_notion">Doc/Notion</option>
+            <option value="terminal">Terminal</option>
+            <option value="autosave">Autosave</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <button id="toggleSession" class="primary">Start session</button>
+        </div>
+
+        <div class="status">
+          <span class="label">Status</span>
+          <div id="sessionState" class="mini">Signed out</div>
+        </div>
+
+        <div class="status">
+          <span class="label">Last checkpoint</span>
+          <div id="lastCheckpoint" class="mini">No checkpoint yet</div>
+        </div>
+
+        <div class="status">
+          <span class="label">Capture readiness</span>
+          <div id="captureInfo" class="mini">No active capture</div>
+        </div>
+
+        <div class="status" id="errorPanel" style="display:none">
+          <span class="label">Error</span>
+          <div id="errorText" class="mini danger"></div>
+        </div>
+      </section>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

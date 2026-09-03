@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "RE-session",
+  "version": "1.0.0",
+  "description": "Critical task capture and recovery companion",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "downloads",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://*.google.com/*",
+    "https://*.gmail.com/*",
+    "https://*.supabase.co/*",
+    "http://localhost:5173/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "RE-session",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/re-session-16.png",
+      "48": "icons/re-session-48.png",
+      "128": "icons/re-session-128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*", "https://*.google.com/*"],
+      "js": ["content-scripts/capture.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
