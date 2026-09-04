@@ -79,14 +79,37 @@
       }
       .settings-note { margin: -4px 0 16px; }
       .settings-status { min-height: 1.2em; margin-top: 10px; }
+      .auth-note { margin: -4px 0 16px; }
+      .auth-view { display: grid; gap: 12px; }
+      .auth-view h1 { margin-bottom: 0; }
     </style>
   </head>
   <body>
     <div class="wrap">
+      <section id="authView" class="auth-view">
+        <h1>Sign in to RE-session</h1>
+        <p class="mini auth-note">Use the same account as the recovery website. This extension signs in separately.</p>
+        <div class="field">
+          <label for="authEmail">Email</label>
+          <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="Your password" />
+        </div>
+        <button id="signIn" class="primary" type="button">Sign in</button>
+        <button id="openSettingsFromAuth" class="link-button" type="button">Supabase settings</button>
+        <div class="status" id="authErrorPanel" style="display:none">
+          <div id="authErrorText" class="mini danger"></div>
+        </div>
+      </section>
       <section id="mainView">
         <div class="view-header">
           <h1>RE-session</h1>
-          <button id="openSettings" class="link-button" type="button">Settings</button>
+          <div class="row">
+            <button id="signOut" class="link-button" type="button">Sign out</button>
+            <button id="openSettings" class="link-button" type="button">Settings</button>
+          </div>
         </div>
         <div class="field">
           <label for="taskName">Task name</label>
@@ -131,6 +154,7 @@
       </section>
     </div>
 
+    <script src="../lib/supabase-client.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

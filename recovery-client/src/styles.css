@@ -115,6 +115,25 @@ h3 {
   width: min(100%, 420px);
 }
 
+.getting-started {
+  width: min(100%, 700px);
+  margin: 0 auto 2rem;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.getting-started h2 {
+  margin-bottom: 0.75rem;
+}
+
+.getting-started ol {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.6rem;
+  color: rgba(28, 30, 28, 0.82);
+}
+
 .auth-panel label,
 .field-row,
 .answer-row {

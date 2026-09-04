@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import CodeEditor from './components/CodeEditor.vue';
-import { getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
 import { clampWithBand, getReadinessColor } from './lib/utils';
 
 const authEmail = ref('demo@example.com');
 const authPassword = ref('password123');
+const isAuthReady = ref(false);
 const isLoading = ref(false);
 const isAuthLoading = ref(false);
 const authError = ref('');
@@ -24,6 +25,7 @@ const answerSheet = ref([
 const emailDraft = ref('Hi team,\n\nI am finalizing the handoff for the prototype and wanted to confirm that the latest update is ready.');
 const attachmentUrl = ref('https://example.com/download-file.pdf');
 const sessionSignal = ref('');
+let authSubscription: { unsubscribe: () => void } | undefined;
 
 const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
 const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
@@ -116,11 +118,27 @@ function normalizeCategory(category: RecoveryCategory) {
 }
 
 onMounted(async () => {
+  const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    user.value = currentSession?.user ?? null;
+    if (currentSession?.user) {
+      void loadSessionAndRecovery();
+    } else {
+      session.value = null;
+      recovery.value = null;
+    }
+  });
+  authSubscription = data.subscription;
+
   const currentUser = await getSupabaseSession();
   user.value = currentUser?.user ?? null;
   if (currentUser?.user) {
     await loadSessionAndRecovery();
   }
+  isAuthReady.value = true;
+});
+
+onUnmounted(() => {
+  authSubscription?.unsubscribe();
 });
 </script>
 
@@ -136,7 +154,13 @@ onMounted(async () => {
       </div>
     </header>
 
-    <main v-if="!user" class="auth-panel">
+    <main v-if="!isAuthReady" class="auth-panel">
+      <div class="panel">
+        <p>Checking your session...</p>
+      </div>
+    </main>
+
+    <main v-else-if="!user" class="auth-panel">
       <div class="panel">
         <h2>Sign in to continue</h2>
         <label>
@@ -154,7 +178,19 @@ onMounted(async () => {
       </div>
     </main>
 
-    <main v-else class="dashboard">
+    <section v-if="isAuthReady && !user" class="getting-started" aria-labelledby="getting-started-title">
+      <p class="eyebrow">New here?</p>
+      <h2 id="getting-started-title">Getting Started</h2>
+      <ol>
+        <li>Install the browser extension.</li>
+        <li>Open the extension and sign in with your account.</li>
+        <li>Click &quot;Start Critical Session,&quot; name your task, and pick a category.</li>
+        <li>Work normally. Checkpoints save automatically in the background.</li>
+        <li>If your laptop becomes unavailable, open this website on any other device and sign in to recover your task.</li>
+      </ol>
+    </section>
+
+    <main v-if="isAuthReady && user" class="dashboard">
       <section class="panel recovery-header">
         <div>
           <p class="eyebrow">Task</p>

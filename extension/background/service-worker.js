@@ -1,6 +1,9 @@
+importScripts('../lib/supabase-client.js');
+
 const STORAGE_KEYS = {
   session: 're_session_session',
   supabase: 're_session_supabase',
+  auth: 're_session_auth',
   captureStatus: 're_session_capture_status',
 };
 
@@ -11,30 +14,20 @@ async function readSession() {
 
 async function safeStoreUploadedCheckpoint(session, payload) {
   const config = (await chrome.storage.local.get(STORAGE_KEYS.supabase))[STORAGE_KEYS.supabase] || {};
-  if (!config.url || !config.anonKey || !config.userId) {
+  const supabase = createSupabaseClient(config);
+  const { data: { session: authSession } } = await supabase.auth.getSession();
+  if (!config.url || !config.anonKey || !config.userId || !authSession?.access_token) {
     console.warn('RE-session: missing auth, checkpoint skipped');
     return;
   }
 
   try {
-    const response = await fetch(`${config.url}/rest/v1/checkpoints`, {
-      method: 'POST',
-      headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    await supabase.from('checkpoints').insert({
         session_id: session.id,
         user_id: config.userId,
         payload,
         captured_at: new Date().toISOString(),
-      }),
     });
-
-    if (!response.ok) {
-      throw new Error(`Checkpoint failed with ${response.status}`);
-    }
   } catch (error) {
     console.error('RE-session checkpoint upload failed', error);
   }

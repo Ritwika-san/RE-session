@@ -1,6 +1,7 @@
 const STORAGE_KEYS = {
   session: 're_session_session',
   supabase: 're_session_supabase',
+  auth: 're_session_auth',
   captureStatus: 're_session_capture_status',
 };
 
@@ -15,6 +16,15 @@ const elements = {
   errorPanel: document.getElementById('errorPanel'),
   errorText: document.getElementById('errorText'),
   openSettings: document.getElementById('openSettings'),
+  authView: document.getElementById('authView'),
+  mainView: document.getElementById('mainView'),
+  authEmail: document.getElementById('authEmail'),
+  authPassword: document.getElementById('authPassword'),
+  signIn: document.getElementById('signIn'),
+  signOut: document.getElementById('signOut'),
+  openSettingsFromAuth: document.getElementById('openSettingsFromAuth'),
+  authErrorPanel: document.getElementById('authErrorPanel'),
+  authErrorText: document.getElementById('authErrorText'),
 };
 
 function setError(message) {
@@ -32,6 +42,49 @@ async function loadSupabaseConfig() {
   return config[STORAGE_KEYS.supabase] || { url: '', anonKey: '', userId: '' };
 }
 
+async function loadAuthSession() {
+  const config = await loadSupabaseConfig();
+  if (!config.url || !config.anonKey) return null;
+  const supabase = createSupabaseClient(config);
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+}
+
+function setAuthError(message) {
+  elements.authErrorPanel.style.display = 'block';
+  elements.authErrorText.textContent = message;
+}
+
+function clearAuthError() {
+  elements.authErrorPanel.style.display = 'none';
+  elements.authErrorText.textContent = '';
+}
+
+async function signInWithPassword(email, password) {
+  const config = await loadSupabaseConfig();
+  if (!config.url || !config.anonKey) {
+    throw new Error('Add the Supabase URL and anon key in Settings first.');
+  }
+
+  const supabase = createSupabaseClient(config);
+  const { data } = await supabase.auth.signInWithPassword({ email, password });
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.supabase]: { ...config, userId: data.user.id },
+  });
+  const storedSession = await loadAuthSession();
+  if (storedSession?.access_token !== data.session.access_token) {
+    throw new Error('Signed in, but the session could not be read back from extension storage.');
+  }
+}
+
+async function syncAuthUi() {
+  const authSession = await loadAuthSession();
+  const isSignedIn = Boolean(authSession?.access_token && authSession?.user?.id);
+  elements.authView.style.display = isSignedIn ? 'none' : 'grid';
+  elements.mainView.style.display = isSignedIn ? 'block' : 'none';
+  return isSignedIn;
+}
+
 async function checkSessionState() {
   const { session } = await chrome.storage.local.get(STORAGE_KEYS.session);
   const sessionState = session || null;
@@ -42,6 +95,7 @@ async function checkSessionState() {
 }
 
 async function syncUi() {
+  if (!await syncAuthUi()) return;
   await checkSessionState();
   const config = await loadSupabaseConfig();
   if (!config.url || !config.anonKey) {
@@ -60,8 +114,8 @@ async function startSession() {
   }
 
   const config = await loadSupabaseConfig();
-  if (!config.url || !config.anonKey || !config.userId) {
-    setError('Not signed in. Sign in through the recovery client before starting a session.');
+  if (!config.url || !config.anonKey || !config.userId || !await loadAuthSession()) {
+    setError('Sign in before starting a Critical Session.');
     return;
   }
 
@@ -74,6 +128,15 @@ async function startSession() {
     userId: config.userId,
   };
 
+  const supabase = createSupabaseClient(config);
+  await supabase.from('critical_sessions').insert({
+    id: session.id,
+    task_name: session.taskName,
+    category: session.category,
+    status: session.status,
+    started_at: session.startedAt,
+    user_id: session.userId,
+  });
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString() } });
   elements.lastCheckpoint.textContent = 'Just now';
@@ -97,18 +160,11 @@ async function endSession() {
 
   try {
     const config = await loadSupabaseConfig();
-    const response = await fetch(`${config.url}/rest/v1/critical_sessions?id=eq.${endedSession.id}`, {
-      method: 'PATCH',
-      headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status: 'ended', ended_at: endedSession.endedAt }),
-    });
-    if (!response.ok) {
-      throw new Error('Unable to update session status in Supabase');
-    }
+    const supabase = createSupabaseClient(config);
+    await supabase.from('critical_sessions').update(
+      { status: 'ended', ended_at: endedSession.endedAt },
+      `id=eq.${endedSession.id}`,
+    );
   } catch (error) {
     setError(error instanceof Error ? error.message : 'Connection failed');
   }
@@ -116,6 +172,33 @@ async function endSession() {
 
 async function registerEvents() {
   elements.openSettings.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  elements.openSettingsFromAuth.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  elements.signIn.addEventListener('click', async () => {
+    const email = elements.authEmail.value.trim();
+    const password = elements.authPassword.value;
+    if (!email || !password) {
+      setAuthError('Enter your email and password.');
+      return;
+    }
+    elements.signIn.disabled = true;
+    clearAuthError();
+    try {
+      await signInWithPassword(email, password);
+      elements.authPassword.value = '';
+      await syncUi();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Unable to sign in');
+    } finally {
+      elements.signIn.disabled = false;
+    }
+  });
+  elements.signOut.addEventListener('click', async () => {
+    const config = await loadSupabaseConfig();
+    if (config.url && config.anonKey) {
+      await createSupabaseClient(config).auth.signOut();
+    }
+    await syncUi();
+  });
   elements.toggleSession.addEventListener('click', async () => {
     const sessionData = (await chrome.storage.local.get(STORAGE_KEYS.session))[STORAGE_KEYS.session];
     if (sessionData) {

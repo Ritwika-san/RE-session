@@ -40,6 +40,7 @@ RE-session is a safety-net continuity system for critical digital work. It start
 4. Select Load unpacked and point to the extension/ folder.
 5. In the popup, select Settings to open the extension options page.
 6. Configure and save the Supabase URL and anon key there.
+7. Return to the popup and sign in with the same email and password you use on the recovery client.
 
 ## Recovery client setup
 
