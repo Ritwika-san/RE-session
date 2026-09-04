@@ -8,3 +8,5 @@ build/
 coverage/
 .vite/
 extension/icons/*.png
+.vercel
+.env*
