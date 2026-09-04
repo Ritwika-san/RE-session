@@ -3,6 +3,12 @@ import { createClient, type Session, type User } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://example.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-anon-key';
 
+function ensureSupabaseConfig(): void {
+  if (supabaseUrl.includes('example') || supabaseAnonKey.includes('demo')) {
+    throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the deployment environment.');
+  }
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -58,9 +64,7 @@ export async function getActiveRecoverySession(): Promise<RecoverySession | null
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<User | null> {
-  if (!supabaseUrl || supabaseUrl.includes('example') || !supabaseAnonKey || supabaseAnonKey.includes('demo')) {
-    return { id: 'demo-user', email } as User;
-  }
+  ensureSupabaseConfig();
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(error.message);

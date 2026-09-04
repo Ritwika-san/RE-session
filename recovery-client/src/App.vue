@@ -119,6 +119,7 @@ function normalizeCategory(category: RecoveryCategory) {
 
 onMounted(async () => {
   const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    if (!isAuthReady.value) return;
     user.value = currentSession?.user ?? null;
     if (currentSession?.user) {
       void loadSessionAndRecovery();
@@ -129,12 +130,17 @@ onMounted(async () => {
   });
   authSubscription = data.subscription;
 
-  const currentUser = await getSupabaseSession();
-  user.value = currentUser?.user ?? null;
-  if (currentUser?.user) {
-    await loadSessionAndRecovery();
+  try {
+    const currentSession = await getSupabaseSession();
+    user.value = currentSession?.user ?? null;
+    isAuthReady.value = true;
+    if (currentSession?.user) {
+      void loadSessionAndRecovery();
+    }
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Unable to restore your session';
+    isAuthReady.value = true;
   }
-  isAuthReady.value = true;
 });
 
 onUnmounted(() => {
