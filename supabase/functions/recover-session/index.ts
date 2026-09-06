@@ -1,23 +1,27 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
     const { session_id } = await req.json();
 
     if (!session_id) {
-      return new Response(JSON.stringify({ error: 'Missing session_id' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Missing session_id' }, 400);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     if (!supabaseUrl || !supabaseAnonKey) {
-      return new Response(JSON.stringify({ error: 'Missing Supabase config' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Missing Supabase config' }, 500);
     }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -31,17 +35,11 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (sessionError || !sessionData) {
-      return new Response(JSON.stringify({ error: 'Session not found or not accessible' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Session not found or not accessible' }, 404);
     }
 
     if (sessionData.status === 'ended') {
-      return new Response(JSON.stringify({ error: 'This session has already ended and cannot be recovered.' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'This session has already ended and cannot be recovered.' }, 409);
     }
 
     const { data: checkpointRows, error: checkpointError } = await supabase
@@ -52,10 +50,7 @@ Deno.serve(async (req: Request) => {
       .limit(10);
 
     if (checkpointError) {
-      return new Response(JSON.stringify({ error: 'Failed to load checkpoints' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Failed to load checkpoints' }, 500);
     }
 
     const latestCheckpoint = checkpointRows?.[0]?.payload || {};
@@ -82,23 +77,25 @@ Deno.serve(async (req: Request) => {
 
     const briefing = await generateBriefing(latestCheckpoint, sessionData.task_name, sessionData.category);
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       category: sessionData.category,
       readiness_score: readinessScore,
       briefing_text: briefing,
       checkpoint_data: latestCheckpoint,
       latest_screenshot_url: screenshotUrl,
       last_checkpoint_ago: lastCheckpointTime ? formatRelative(lastCheckpointTime) : null,
-    }), {
-      headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
   }
 });
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 async function getSignedUrl(supabase: any, storagePath: string) {
   const { data, error } = await supabase.storage.from('re-session-storage').createSignedUrl(storagePath, 300);

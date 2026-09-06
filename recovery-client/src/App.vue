@@ -98,7 +98,7 @@ function startRecoveryRefresh() {
   stopRecoveryRefresh();
   refreshTimer = setInterval(() => {
     if (user.value && session.value) void loadRecovery();
-  }, 10000);
+  }, 5000);
 }
 
 function stopRecoveryRefresh() {

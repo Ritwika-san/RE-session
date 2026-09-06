@@ -18,19 +18,27 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   const { data: { session: authSession } } = await supabase.auth.getSession();
   if (!config.url || !config.anonKey || !config.userId || !authSession?.access_token) {
     console.warn('RE-session: missing auth, checkpoint skipped');
-    return;
+    return false;
   }
 
   try {
     await supabase.from('checkpoints').insert({
-        session_id: session.id,
-        user_id: config.userId,
-        payload,
-        captured_at: new Date().toISOString(),
+      session_id: session.id,
+      user_id: config.userId,
+      payload,
+      captured_at: new Date().toISOString(),
     });
+    return true;
   } catch (error) {
     console.error('RE-session checkpoint upload failed', error);
+    return false;
   }
+}
+
+async function markCheckpointCaptured() {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString() },
+  });
 }
 
 async function captureAndUploadScreenshot(session, tab, supabase) {
@@ -63,7 +71,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const config = chrome.storage.local.get(STORAGE_KEYS.supabase);
       config.then((stored) => {
         const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
-        void safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload });
+        void safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload })
+          .then((uploaded) => uploaded && markCheckpointCaptured());
         void captureAndUploadScreenshot(session, sender?.tab, supabase);
       });
       sendResponse({ ok: true });
