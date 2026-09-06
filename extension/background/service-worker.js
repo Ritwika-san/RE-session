@@ -22,12 +22,16 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   }
 
   try {
-    await supabase.from('checkpoints').insert({
+    const { error } = await supabase.from('checkpoints').insert({
       session_id: session.id,
       user_id: config.userId,
       payload,
       captured_at: new Date().toISOString(),
     });
+    if (error) {
+      console.error('RE-session checkpoint upload failed', error);
+      return false;
+    }
     return true;
   } catch (error) {
     console.error('RE-session checkpoint upload failed', error);

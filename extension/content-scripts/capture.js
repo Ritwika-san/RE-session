@@ -11,7 +11,13 @@ function isSensitiveField(field) {
 
 function getFormSnapshot() {
   const form = document.querySelector('form');
-  if (!form) return null;
+  if (!form) {
+    return {
+      src: location.href,
+      title: document.title,
+      time: new Date().toISOString(),
+    };
+  }
 
   const entries = Array.from(form.elements).reduce((acc, field) => {
     if (!(field instanceof HTMLElement)) return acc;

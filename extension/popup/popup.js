@@ -289,8 +289,8 @@ async function startSession() {
     user_id: session.userId,
   });
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
-  await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString() } });
-  elements.lastCheckpoint.textContent = 'Just now';
+  await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: null } });
+  elements.lastCheckpoint.textContent = 'Waiting for first checkpoint';
   await checkSessionState();
   clearError();
 }
