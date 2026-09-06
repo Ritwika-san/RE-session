@@ -63,6 +63,8 @@ async function loadRecovery() {
   if (!session.value) return;
   isLoading.value = true;
   recoveryError.value = '';
+  actionMessage.value = '';
+  sessionSignal.value = '';
   try {
     const currentSession = session.value;
     const result = await fetchRecoveryForSession(currentSession.id);
@@ -70,7 +72,12 @@ async function loadRecovery() {
     activeCategory.value = result.category || 'code';
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
     codeSource.value = result.checkpoint_data?.draft ? String(result.checkpoint_data.draft) : '';
+    actionMessage.value = result.last_checkpoint_ago
+      ? `Task recovered from the latest checkpoint (${result.last_checkpoint_ago}).`
+      : 'Task loaded, but no checkpoint has been captured yet.';
   } catch (error) {
+    recovery.value = null;
+    codeSource.value = '';
     recoveryError.value = error instanceof Error ? error.message : 'Unable to fetch recovery data';
   } finally {
     isLoading.value = false;
@@ -110,7 +117,7 @@ function stopRecoveryRefresh() {
 
 function reviewCategory(category: RecoveryCategory) {
   activeCategory.value = category;
-  actionMessage.value = '';
+  actionMessage.value = `Showing ${normalizeCategory(category).toLowerCase()} recovery.`;
 }
 
 function sendEmail() {
@@ -295,7 +302,7 @@ onUnmounted(() => {
           <div v-else class="empty-thumb">No screenshot captured</div>
         </div>
         <div class="action-stack">
-          <button class="primary-button" @click="loadRecovery" :disabled="isLoading">
+          <button class="primary-button" @click="loadRecovery" :disabled="isLoading || !session">
             {{ isLoading ? 'Recovering…' : 'Recover this task' }}
           </button>
           <button class="secondary-button" @click="reviewCategory('code')">Review code</button>
