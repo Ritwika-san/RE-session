@@ -29,9 +29,12 @@ async function saveSettings() {
   }
 
   const stored = await chrome.storage.local.get(STORAGE_KEY);
+  const previousConfig = stored[STORAGE_KEY] || {};
+  const configChanged = previousConfig.url !== url || previousConfig.anonKey !== anonKey;
   await chrome.storage.local.set({
-    [STORAGE_KEY]: { ...(stored[STORAGE_KEY] || {}), url, anonKey },
+    [STORAGE_KEY]: { ...previousConfig, url, anonKey, ...(configChanged ? { userId: '' } : {}) },
   });
+  if (configChanged) await chrome.storage.local.remove('re_session_auth');
   settingsStatus.textContent = 'Settings saved.';
   settingsStatus.className = 'status ok';
 }

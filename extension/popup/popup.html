@@ -82,6 +82,8 @@
       .auth-note { margin: -4px 0 16px; }
       .auth-view { display: grid; gap: 12px; }
       .auth-view h1 { margin-bottom: 0; }
+      .folder-controls { display: none; gap: 8px; margin: -4px 0 12px; }
+      .folder-status { min-height: 1.2em; }
     </style>
   </head>
   <body>
@@ -126,6 +128,11 @@
             <option value="terminal">Terminal</option>
             <option value="autosave">Autosave</option>
           </select>
+        </div>
+
+        <div id="folderControls" class="folder-controls">
+          <button id="chooseFolder" class="secondary" type="button">Choose Folder</button>
+          <div id="folderStatus" class="mini folder-status" role="status"></div>
         </div>
 
         <div class="row">
