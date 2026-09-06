@@ -17,6 +17,7 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   const supabase = createSupabaseClient(config);
   const { data: { session: authSession } } = await supabase.auth.getSession();
   if (!config.url || !config.anonKey || !config.userId || !authSession?.access_token) {
+    await setCaptureError('Extension authentication or Supabase settings are missing');
     console.warn('RE-session: missing auth, checkpoint skipped');
     return false;
   }
@@ -29,19 +30,27 @@ async function safeStoreUploadedCheckpoint(session, payload) {
       captured_at: new Date().toISOString(),
     });
     if (error) {
+      await setCaptureError(error.message || 'Checkpoint upload failed');
       console.error('RE-session checkpoint upload failed', error);
       return false;
     }
     return true;
   } catch (error) {
+    await setCaptureError(error instanceof Error ? error.message : 'Checkpoint upload failed');
     console.error('RE-session checkpoint upload failed', error);
     return false;
   }
 }
 
+async function setCaptureError(message) {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.captureStatus]: { active: false, lastCheckpoint: null, lastError: message },
+  });
+}
+
 async function markCheckpointCaptured() {
   await chrome.storage.local.set({
-    [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString() },
+    [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString(), lastError: null },
   });
 }
 
@@ -71,7 +80,9 @@ async function captureAndUploadScreenshot(session, tab, supabase) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'CAPTURE') {
     readSession().then((session) => {
-      if (!session) return;
+      if (!session) {
+        return setCaptureError('No active extension session found');
+      }
       const config = chrome.storage.local.get(STORAGE_KEYS.supabase);
       config.then((stored) => {
         const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});

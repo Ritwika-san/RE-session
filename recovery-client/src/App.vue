@@ -4,8 +4,8 @@ import CodeEditor from './components/CodeEditor.vue';
 import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
 import { clampWithBand, getReadinessColor } from './lib/utils';
 
-const authEmail = ref('demo@example.com');
-const authPassword = ref('password123');
+const authEmail = ref('');
+const authPassword = ref('');
 const isAuthReady = ref(false);
 const isLoading = ref(false);
 const isAuthLoading = ref(false);
@@ -230,11 +230,11 @@ onUnmounted(() => {
         <h2>Sign in to continue</h2>
         <label>
           Email
-          <input v-model="authEmail" type="email" />
+          <input v-model="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
         </label>
         <label>
           Password
-          <input v-model="authPassword" type="password" />
+          <input v-model="authPassword" type="password" autocomplete="current-password" placeholder="Your Supabase password" />
         </label>
         <button class="primary-button" :disabled="isAuthLoading" @click="handleSignIn">
           {{ isAuthLoading ? 'Signing in…' : 'Sign in' }}

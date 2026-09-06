@@ -38,7 +38,11 @@ function getFormSnapshot() {
 }
 
 function sendCapture(data) {
-  chrome.runtime.sendMessage({ type: 'CAPTURE', payload: data });
+  chrome.runtime.sendMessage({ type: 'CAPTURE', payload: data }, () => {
+    if (chrome.runtime.lastError) {
+      console.warn('RE-session capture message failed:', chrome.runtime.lastError.message);
+    }
+  });
 }
 
 function captureSnapshot() {
@@ -52,4 +56,5 @@ if (chrome.runtime?.onMessage) {
   });
 }
 
+captureSnapshot();
 setInterval(captureSnapshot, 4500);

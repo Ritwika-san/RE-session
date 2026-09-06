@@ -16,6 +16,7 @@
     "https://*.gmail.com/*",
     "https://*.supabase.co/*",
     "http://localhost:5173/*",
+    "http://127.0.0.1:5173/*",
     "http://localhost:3000/*"
   ],
   "background": {
@@ -33,7 +34,12 @@
   "options_page": "options/options.html",
   "content_scripts": [
     {
-      "matches": ["https://mail.google.com/*", "https://*.google.com/*"],
+      "matches": [
+        "https://mail.google.com/*",
+        "https://*.google.com/*",
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
       "js": ["content-scripts/capture.js"],
       "run_at": "document_idle"
     }

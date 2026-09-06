@@ -220,7 +220,9 @@ async function checkSessionState() {
     elements.activeTask.textContent = sessionState.taskName;
     elements.activeMeta.textContent = `${formatCategory(sessionState.category)} · Started ${formatTime(sessionState.startedAt)}`;
     elements.activeCheckpoint.textContent = formatCheckpoint(captureStatus.lastCheckpoint);
-    elements.activeCapture.textContent = captureStatus.active ? 'Capturing' : 'Waiting';
+    elements.activeCapture.textContent = captureStatus.lastError
+      ? `Error: ${captureStatus.lastError}`
+      : captureStatus.active ? 'Capturing' : 'Waiting';
   }
 }
 
