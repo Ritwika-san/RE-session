@@ -33,6 +33,7 @@ const elements = {
 };
 
 let directoryHandle = null;
+let authSession = null;
 
 function openDirectoryDatabase() {
   return new Promise((resolve, reject) => {
@@ -186,18 +187,19 @@ async function signInWithPassword(email, password) {
 }
 
 async function syncAuthUi() {
-  const authSession = await loadAuthSession();
+  authSession = await loadAuthSession();
   const isSignedIn = Boolean(authSession?.access_token && authSession?.user?.id);
   elements.authView.style.display = isSignedIn ? 'none' : 'grid';
   elements.mainView.style.display = isSignedIn ? 'block' : 'none';
+  elements.sessionState.textContent = isSignedIn ? 'Signed in' : 'Signed out';
+  elements.sessionState.classList.toggle('ok', isSignedIn);
+  elements.toggleSession.disabled = !isSignedIn;
   return isSignedIn;
 }
 
 async function checkSessionState() {
   const { session } = await chrome.storage.local.get(STORAGE_KEYS.session);
   const sessionState = session || null;
-  elements.sessionState.textContent = sessionState ? `Active: ${sessionState.taskName}` : 'Signed out';
-  elements.sessionState.classList.toggle('ok', Boolean(sessionState));
   elements.toggleSession.textContent = sessionState ? 'End session' : 'Start session';
   elements.captureInfo.textContent = sessionState ? 'Capturing code, form, email, and screenshot updates' : 'No active capture';
 }
@@ -214,6 +216,11 @@ async function syncUi() {
 }
 
 async function startSession() {
+  if (!await syncAuthUi()) {
+    setError('Sign in before starting a Critical Session.');
+    return;
+  }
+
   const taskName = elements.taskName.value.trim();
   const category = elements.category.value;
   if (!taskName) {
@@ -222,7 +229,6 @@ async function startSession() {
   }
 
   const config = await loadSupabaseConfig();
-  const authSession = await loadAuthSession();
   if (!config.url || !config.anonKey || !authSession?.user?.id) {
     setError('Sign in before starting a Critical Session.');
     return;
@@ -264,7 +270,6 @@ async function endSession() {
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: null });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: false, lastCheckpoint: null } });
   elements.lastCheckpoint.textContent = 'No checkpoint yet';
-  elements.sessionState.textContent = 'Session ended';
   clearError();
 
   try {
