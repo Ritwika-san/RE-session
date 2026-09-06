@@ -11,6 +11,7 @@ const elements = {
   taskName: document.getElementById('taskName'),
   category: document.getElementById('category'),
   toggleSession: document.getElementById('toggleSession'),
+  setupControls: document.getElementById('setupControls'),
   deleteSession: document.getElementById('deleteSession'),
   sessionState: document.getElementById('sessionState'),
   lastCheckpoint: document.getElementById('lastCheckpoint'),
@@ -30,6 +31,12 @@ const elements = {
   folderControls: document.getElementById('folderControls'),
   chooseFolder: document.getElementById('chooseFolder'),
   folderStatus: document.getElementById('folderStatus'),
+  activeSession: document.getElementById('activeSession'),
+  activeTask: document.getElementById('activeTask'),
+  activeMeta: document.getElementById('activeMeta'),
+  activeCheckpoint: document.getElementById('activeCheckpoint'),
+  activeCapture: document.getElementById('activeCapture'),
+  endActiveSession: document.getElementById('endActiveSession'),
 };
 
 let directoryHandle = null;
@@ -198,10 +205,39 @@ async function syncAuthUi() {
 }
 
 async function checkSessionState() {
-  const { session } = await chrome.storage.local.get(STORAGE_KEYS.session);
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.session, STORAGE_KEYS.captureStatus]);
+  const session = stored[STORAGE_KEYS.session] || null;
+  const captureStatus = stored[STORAGE_KEYS.captureStatus] || {};
   const sessionState = session || null;
-  elements.toggleSession.textContent = sessionState ? 'End session' : 'Start session';
-  elements.captureInfo.textContent = sessionState ? 'Capturing code, form, email, and screenshot updates' : 'No active capture';
+  const isActive = Boolean(sessionState);
+  elements.sessionState.textContent = isActive ? 'Active session' : 'Signed in';
+  elements.sessionState.classList.toggle('ok', isActive);
+  elements.toggleSession.textContent = isActive ? 'End session' : 'Start session';
+  elements.setupControls.style.display = isActive ? 'none' : 'block';
+  elements.activeSession.style.display = isActive ? 'block' : 'none';
+  elements.captureInfo.textContent = isActive ? 'Capturing code, form, email, and screenshot updates' : 'No active capture';
+  if (isActive) {
+    elements.activeTask.textContent = sessionState.taskName;
+    elements.activeMeta.textContent = `${formatCategory(sessionState.category)} · Started ${formatTime(sessionState.startedAt)}`;
+    elements.activeCheckpoint.textContent = formatCheckpoint(captureStatus.lastCheckpoint);
+    elements.activeCapture.textContent = captureStatus.active ? 'Capturing' : 'Waiting';
+  }
+}
+
+function formatCategory(category) {
+  return { doc_notion: 'Doc / Notion', autosave: 'Autosave' }[category] || `${category.charAt(0).toUpperCase()}${category.slice(1)}`;
+}
+
+function formatTime(value) {
+  if (!value) return 'unknown time';
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatCheckpoint(value) {
+  if (!value) return 'Waiting...';
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  return `${Math.round(seconds / 60)}m ago`;
 }
 
 async function syncUi() {
@@ -323,6 +359,7 @@ async function registerEvents() {
       await startSession();
     }
   });
+  elements.endActiveSession.addEventListener('click', endSession);
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -330,4 +367,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   await restoreDirectoryHandle();
   await syncFolderUi();
   await syncUi();
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && (changes[STORAGE_KEYS.session] || changes[STORAGE_KEYS.captureStatus])) {
+      void checkSessionState();
+    }
+  });
 });

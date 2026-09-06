@@ -17,8 +17,8 @@
       body {
         margin: 0;
         width: 360px;
-        min-height: 360px;
-        background: var(--bg);
+        min-height: 390px;
+        background: linear-gradient(145deg, #EEF0EE 0%, #E5EBE7 100%);
         color: var(--ink);
         font-family: -apple-system, "Segoe UI", sans-serif;
       }
@@ -48,13 +48,51 @@
       .secondary {
         background: var(--surface);
       }
-      .status {
+      .status, .active-session {
         border: 1px solid var(--border);
         background: var(--surface);
         border-radius: 10px;
         padding: 10px 12px;
         margin-top: 12px;
       }
+      .active-session {
+        border-color: rgba(47, 111, 94, 0.45);
+        box-shadow: 0 8px 20px rgba(47, 111, 94, 0.1);
+      }
+      .active-session-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .active-session-title { margin: 0; font-size: 1rem; }
+      .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--accent-safe);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .live-badge::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent-safe);
+        box-shadow: 0 0 0 4px rgba(47, 111, 94, 0.12);
+      }
+      .active-task { margin: 0 0 4px; font-size: 1.15rem; font-weight: 700; }
+      .active-meta { margin: 0; font-size: 0.8rem; opacity: 0.72; }
+      .active-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+      .metric { padding: 9px; border-radius: 7px; background: #F3F6F3; }
+      .metric-label { display: block; font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.62; }
+      .metric-value { display: block; margin-top: 4px; font-size: 0.82rem; font-weight: 600; }
+      .active-session .danger-button { width: 100%; margin-top: 14px; }
+      .danger-button { color: #8A3D1B; border-color: #D9B09B; background: #FFF9F6; }
       .status .label {
         display: block;
         font-size: 0.7rem;
@@ -113,31 +151,53 @@
             <button id="openSettings" class="link-button" type="button">Settings</button>
           </div>
         </div>
-        <div class="field">
-          <label for="taskName">Task name</label>
-          <input id="taskName" type="text" placeholder="e.g. Final prototype draft" />
+        <div id="setupControls">
+          <div class="field">
+            <label for="taskName">Task name</label>
+            <input id="taskName" type="text" placeholder="e.g. Final prototype draft" />
+          </div>
+
+          <div class="field">
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="code">Code</option>
+              <option value="email">Email</option>
+              <option value="form">Form</option>
+              <option value="doc_notion">Doc/Notion</option>
+              <option value="terminal">Terminal</option>
+              <option value="autosave">Autosave</option>
+            </select>
+          </div>
+
+          <div id="folderControls" class="folder-controls">
+            <button id="chooseFolder" class="secondary" type="button">Choose Folder</button>
+            <div id="folderStatus" class="mini folder-status" role="status"></div>
+          </div>
+
+          <div class="row">
+            <button id="toggleSession" class="primary" disabled>Start session</button>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="category">Category</label>
-          <select id="category">
-            <option value="code">Code</option>
-            <option value="email">Email</option>
-            <option value="form">Form</option>
-            <option value="doc_notion">Doc/Notion</option>
-            <option value="terminal">Terminal</option>
-            <option value="autosave">Autosave</option>
-          </select>
-        </div>
-
-        <div id="folderControls" class="folder-controls">
-          <button id="chooseFolder" class="secondary" type="button">Choose Folder</button>
-          <div id="folderStatus" class="mini folder-status" role="status"></div>
-        </div>
-
-        <div class="row">
-          <button id="toggleSession" class="primary" disabled>Start session</button>
-        </div>
+        <section id="activeSession" class="active-session" style="display:none" aria-live="polite">
+          <div class="active-session-header">
+            <h2 class="active-session-title">Session active</h2>
+            <span class="live-badge">Live</span>
+          </div>
+          <p id="activeTask" class="active-task"></p>
+          <p id="activeMeta" class="active-meta"></p>
+          <div class="active-metrics">
+            <div class="metric">
+              <span class="metric-label">Last checkpoint</span>
+              <strong id="activeCheckpoint" class="metric-value">Waiting...</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Capture</span>
+              <strong id="activeCapture" class="metric-value">Starting...</strong>
+            </div>
+          </div>
+          <button id="endActiveSession" class="secondary danger-button" type="button">End session</button>
+        </section>
 
         <div class="status">
           <span class="label">Status</span>

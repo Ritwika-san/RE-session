@@ -83,5 +83,18 @@ function createSupabaseClient(config) {
         },
       };
     },
+    storage: {
+      from(bucket) {
+        return {
+          async upload(path, body, contentType) {
+            return request(`/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
+              body,
+            });
+          },
+        };
+      },
+    },
   };
 }

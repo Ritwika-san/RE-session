@@ -82,7 +82,17 @@ export async function fetchRecoveryForSession(sessionId: string): Promise<Recove
   });
 
   if (error) {
-    throw new Error(error.message || 'Recovery request failed');
+    let message = error.message || 'Recovery request failed';
+    const context = 'context' in error ? error.context : undefined;
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json();
+        if (typeof body?.error === 'string') message = body.error;
+      } catch {
+        // Keep the SDK error when the function response is not JSON.
+      }
+    }
+    throw new Error(message);
   }
 
   return data as RecoveryPayload;

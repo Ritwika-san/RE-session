@@ -10,6 +10,7 @@ const isAuthReady = ref(false);
 const isLoading = ref(false);
 const isAuthLoading = ref(false);
 const authError = ref('');
+const recoveryError = ref('');
 const session = ref<RecoverySession | null>(null);
 const recovery = ref<RecoveryPayload | null>(null);
 const user = ref<any>(null);
@@ -25,7 +26,9 @@ const answerSheet = ref([
 const emailDraft = ref('Hi team,\n\nI am finalizing the handoff for the prototype and wanted to confirm that the latest update is ready.');
 const attachmentUrl = ref('https://example.com/download-file.pdf');
 const sessionSignal = ref('');
+const actionMessage = ref('');
 let authSubscription: { unsubscribe: () => void } | undefined;
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
 
 const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
 const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
@@ -48,7 +51,9 @@ async function handleSignOut() {
   try {
     await signOutUser();
     user.value = null;
+    session.value = null;
     recovery.value = null;
+    stopRecoveryRefresh();
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unable to sign out';
   }
@@ -57,6 +62,7 @@ async function handleSignOut() {
 async function loadRecovery() {
   if (!session.value) return;
   isLoading.value = true;
+  recoveryError.value = '';
   try {
     const currentSession = session.value;
     const result = await fetchRecoveryForSession(currentSession.id);
@@ -65,15 +71,65 @@ async function loadRecovery() {
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
     codeSource.value = result.checkpoint_data?.draft ? String(result.checkpoint_data.draft) : '';
   } catch (error) {
-    authError.value = error instanceof Error ? error.message : 'Unable to fetch recovery data';
+    recoveryError.value = error instanceof Error ? error.message : 'Unable to fetch recovery data';
   } finally {
     isLoading.value = false;
   }
 }
 
 async function loadSessionAndRecovery() {
-  session.value = await getActiveRecoverySession();
-  if (session.value) await loadRecovery();
+  try {
+    session.value = await getActiveRecoverySession();
+    if (session.value) {
+      await loadRecovery();
+      startRecoveryRefresh();
+    } else {
+      recovery.value = null;
+      sessionSignal.value = '';
+      recoveryError.value = '';
+      stopRecoveryRefresh();
+    }
+  } catch (error) {
+    recoveryError.value = error instanceof Error ? error.message : 'Unable to load recovery data';
+  }
+}
+
+function startRecoveryRefresh() {
+  stopRecoveryRefresh();
+  refreshTimer = setInterval(() => {
+    if (user.value && session.value) void loadRecovery();
+  }, 10000);
+}
+
+function stopRecoveryRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = undefined;
+  }
+}
+
+function reviewCategory(category: RecoveryCategory) {
+  activeCategory.value = category;
+  actionMessage.value = '';
+}
+
+function sendEmail() {
+  actionMessage.value = 'Email draft is ready to send from the original mail account.';
+}
+
+function openOriginalSite() {
+  window.open('https://example.com/', '_blank', 'noopener,noreferrer');
+}
+
+function exportAutosave() {
+  const blob = new Blob(['Recovered autosave reference: ~/Documents/critical-handoff/notes.docx'], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'recovered-autosave-reference.txt';
+  anchor.click();
+  URL.revokeObjectURL(url);
+  actionMessage.value = 'Autosave reference exported.';
 }
 
 async function executeCode() {
@@ -126,6 +182,8 @@ onMounted(async () => {
     } else {
       session.value = null;
       recovery.value = null;
+      recoveryError.value = '';
+      stopRecoveryRefresh();
     }
   });
   authSubscription = data.subscription;
@@ -145,6 +203,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   authSubscription?.unsubscribe();
+  stopRecoveryRefresh();
 });
 </script>
 
@@ -209,6 +268,8 @@ onUnmounted(() => {
         </div>
       </section>
 
+      <p v-if="recoveryError" class="status-error">{{ recoveryError }}</p>
+
       <section class="panel summary-panel">
         <div class="summary-block">
           <p class="eyebrow">Category</p>
@@ -237,8 +298,8 @@ onUnmounted(() => {
           <button class="primary-button" @click="loadRecovery" :disabled="isLoading">
             {{ isLoading ? 'Recovering…' : 'Recover this task' }}
           </button>
-          <button class="secondary-button" @click="() => activeCategory = 'code'">Review code</button>
-          <button class="secondary-button" @click="() => activeCategory = 'form'">Review form</button>
+          <button class="secondary-button" @click="reviewCategory('code')">Review code</button>
+          <button class="secondary-button" @click="reviewCategory('form')">Review form</button>
         </div>
       </section>
 
@@ -269,7 +330,7 @@ onUnmounted(() => {
           </div>
           <textarea v-model="emailDraft" rows="10"></textarea>
           <div class="button-row">
-            <button class="primary-button">Send</button>
+            <button class="primary-button" @click="sendEmail">Send</button>
             <button class="secondary-button" @click="downloadAttachment">Download recovered attachment</button>
           </div>
         </div>
@@ -284,7 +345,7 @@ onUnmounted(() => {
             <button class="copy-button" @click="copyAnswer(item.value)">Copy</button>
           </div>
           <div class="button-row">
-            <button class="secondary-button">Open original site</button>
+            <button class="secondary-button" @click="openOriginalSite">Open original site</button>
             <button class="secondary-button" @click="downloadAttachment">Download recovered file</button>
           </div>
         </div>
@@ -311,9 +372,10 @@ onUnmounted(() => {
           <div class="autosave-card">
             <strong>Path:</strong> ~/Documents/critical-handoff/notes.docx
           </div>
-          <button class="secondary-button">Export back to original format</button>
+          <button class="secondary-button" @click="exportAutosave">Export back to original format</button>
         </div>
       </section>
+      <p v-if="actionMessage" class="status-message">{{ actionMessage }}</p>
     </main>
   </div>
 </template>

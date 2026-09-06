@@ -33,11 +33,39 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+async function captureAndUploadScreenshot(session, tab, supabase) {
+  if (!tab?.windowId) return;
+
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    const imageResponse = await fetch(dataUrl);
+    const image = await imageResponse.arrayBuffer();
+    const path = `${session.userId}/${session.id}/${Date.now()}.png`;
+    const upload = await supabase.storage.from('re-session-storage').upload(path, image, 'image/png');
+    if (upload.error) throw new Error(upload.error.message || 'Screenshot upload failed');
+
+    const config = (await chrome.storage.local.get(STORAGE_KEYS.supabase))[STORAGE_KEYS.supabase] || {};
+    await supabase.from('screenshots').insert({
+      session_id: session.id,
+      user_id: config.userId,
+      storage_path: path,
+      captured_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('RE-session screenshot capture failed', error);
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'CAPTURE') {
     readSession().then((session) => {
       if (!session) return;
-      safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload });
+      const config = chrome.storage.local.get(STORAGE_KEYS.supabase);
+      config.then((stored) => {
+        const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
+        void safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload });
+        void captureAndUploadScreenshot(session, sender?.tab, supabase);
+      });
       sendResponse({ ok: true });
     });
     return true;
