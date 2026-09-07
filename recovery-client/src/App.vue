@@ -16,6 +16,7 @@ const recovery = ref<RecoveryPayload | null>(null);
 const user = ref<any>(null);
 const activeCategory = ref<RecoveryCategory>('code');
 const codeSource = ref('');
+const codeEditorDirty = ref(false);
 const runOutput = ref('');
 const runLoading = ref(false);
 const answerSheet = ref([
@@ -63,7 +64,7 @@ async function handleSignOut() {
     session.value = null;
     recovery.value = null;
     stopRecoveryRefresh();
-    stopRecoveryRealtime();
+    await stopRecoveryRealtime();
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unable to sign out';
   }
@@ -83,7 +84,7 @@ async function loadRecovery() {
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
     checkpointAt.value = result.last_checkpoint_at || null;
     const recoveredDraft = result.checkpoint_data?.draft ?? result.checkpoint_data?.content;
-    codeSource.value = recoveredDraft ? String(recoveredDraft) : '';
+    if (!codeEditorDirty.value) codeSource.value = recoveredDraft ? String(recoveredDraft) : '';
     const recoveredFields = result.checkpoint_data?.fields;
     if (Array.isArray(recoveredFields) && recoveredFields.length > 0) {
       answerSheet.value = recoveredFields.map((field: { name?: string; value?: string }) => ({
@@ -105,7 +106,7 @@ async function loadRecovery() {
 
 async function loadSessionAndRecovery() {
   try {
-    stopRecoveryRealtime();
+    await stopRecoveryRealtime();
     session.value = await getActiveRecoverySession();
     if (session.value) {
       await loadRecovery();
@@ -113,6 +114,7 @@ async function loadSessionAndRecovery() {
       startRecoveryRealtime(session.value.id);
     } else {
       recovery.value = null;
+      codeEditorDirty.value = false;
       sessionSignal.value = '';
       checkpointAt.value = null;
       recoveryError.value = '';
@@ -150,9 +152,9 @@ function startRecoveryRealtime(sessionId: string) {
     .subscribe();
 }
 
-function stopRecoveryRealtime() {
+async function stopRecoveryRealtime() {
   if (recoveryChannel) {
-    void recoveryChannel.unsubscribe();
+    await recoveryChannel.unsubscribe();
     recoveryChannel = undefined;
   }
 }
@@ -215,6 +217,11 @@ function copyAnswer(value: string) {
   });
 }
 
+function handleCodeChange(value: string) {
+  codeEditorDirty.value = true;
+  codeSource.value = value;
+}
+
 function downloadAttachment() {
   const anchor = document.createElement('a');
   anchor.href = attachmentUrl.value;
@@ -256,9 +263,10 @@ onMounted(async () => {
     } else {
       session.value = null;
       recovery.value = null;
+      codeEditorDirty.value = false;
       recoveryError.value = '';
       stopRecoveryRefresh();
-      stopRecoveryRealtime();
+      void stopRecoveryRealtime();
     }
   });
   authSubscription = data.subscription;
@@ -392,7 +400,7 @@ onUnmounted(() => {
         <div v-if="activeCategory === 'code'" class="category-view">
           <h3>Code recovery</h3>
           <div v-if="codeSource" class="editor-shell">
-            <CodeEditor v-model="codeSource" />
+            <CodeEditor :model-value="codeSource" @update:model-value="handleCodeChange" />
           </div>
           <div v-else class="empty-thumb">No code checkpoint captured yet</div>
           <div class="button-row">

@@ -108,7 +108,10 @@ export async function fetchRecoveryForSession(sessionId: string): Promise<Recove
 }
 
 export async function runPistonCode(language: string, source: string) {
-  const response = await fetch(import.meta.env.VITE_PISTON_API_URL || 'https://emkc.org/api/v2/piston/execute', {
+  const pistonUrl = import.meta.env.VITE_PISTON_API_URL;
+  if (language === 'javascript' && !pistonUrl) return runJavaScriptLocally(source);
+
+  const response = await fetch(pistonUrl || 'https://emkc.org/api/v2/piston/execute', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -118,11 +121,52 @@ export async function runPistonCode(language: string, source: string) {
     }),
   });
 
+  if (!response.ok && response.status === 401 && language === 'javascript') {
+    return runJavaScriptLocally(source);
+  }
+
   if (!response.ok) {
     throw new Error('Execution request failed');
   }
 
   return response.json();
+}
+
+function runJavaScriptLocally(source: string): Promise<{ run: { stdout: string; stderr: string } }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(URL.createObjectURL(new Blob([`
+      self.onmessage = ({ data }) => {
+        const output = [];
+        const format = (value) => typeof value === 'string' ? value : JSON.stringify(value);
+        const console = {
+          log: (...values) => output.push(values.map(format).join(' ')),
+          info: (...values) => output.push(values.map(format).join(' ')),
+          warn: (...values) => output.push(values.map(format).join(' ')),
+        };
+        try {
+          eval(data);
+          self.postMessage({ run: { stdout: output.join('\\n'), stderr: '' } });
+        } catch (error) {
+          self.postMessage({ run: { stdout: '', stderr: error instanceof Error ? error.message : String(error) } });
+        }
+      };
+    `], { type: 'text/javascript' })));
+    const timeout = window.setTimeout(() => {
+      worker.terminate();
+      reject(new Error('Execution timed out'));
+    }, 3000);
+    worker.onmessage = (event) => {
+      window.clearTimeout(timeout);
+      worker.terminate();
+      resolve(event.data);
+    };
+    worker.onerror = () => {
+      window.clearTimeout(timeout);
+      worker.terminate();
+      reject(new Error('Execution request failed'));
+    };
+    worker.postMessage(source);
+  });
 }
 
 export function formatRelativeTime(value: string | null | undefined): string {

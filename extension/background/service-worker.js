@@ -36,7 +36,7 @@ async function captureActiveScreenshot() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.supabase);
   const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
   const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  await captureAndUploadScreenshot(session, activeTabs[0], supabase);
+  await captureScreenshotWithRetry(session, activeTabs[0], supabase);
 }
 
 async function captureSessionStart() {
@@ -55,7 +55,15 @@ async function captureSessionStart() {
     time: new Date().toISOString(),
   });
   if (checkpointUploaded) await markCheckpointCaptured();
-  await captureAndUploadScreenshot(session, tab, supabase);
+  await captureScreenshotWithRetry(session, tab, supabase);
+}
+
+async function captureScreenshotWithRetry(session, tab, supabase) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await captureAndUploadScreenshot(session, tab, supabase)) return true;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return false;
 }
 
 async function readSession() {
@@ -172,7 +180,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const captureTab = activeTabs[0] || sender?.tab;
         const [checkpointUploaded, screenshotUploaded] = await Promise.all([
           safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload }),
-          captureAndUploadScreenshot(session, captureTab, supabase),
+          captureScreenshotWithRetry(session, captureTab, supabase),
         ]);
         if (checkpointUploaded) await markCheckpointCaptured();
         sendResponse({ ok: checkpointUploaded || screenshotUploaded, checkpointUploaded, screenshotUploaded });
