@@ -10,6 +10,7 @@ create table if not exists public.critical_sessions (
   user_id uuid not null references auth.users(id) on delete cascade,
   task_name text not null,
   category public.category_enum not null,
+  application text not null default 'browser',
   status text not null default 'active' check (status in ('active', 'ended')),
   started_at timestamptz not null default now(),
   ended_at timestamptz

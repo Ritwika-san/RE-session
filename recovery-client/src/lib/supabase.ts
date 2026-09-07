@@ -29,6 +29,7 @@ export type RecoverySession = {
   id: string;
   task_name: string;
   category: RecoveryCategory;
+  application?: 'browser' | 'vscode' | 'other' | string;
   status: 'active' | 'ended';
   started_at: string;
   ended_at?: string | null;
@@ -37,6 +38,7 @@ export type RecoverySession = {
 
 export type RecoveryPayload = {
   category: RecoveryCategory;
+  application?: 'browser' | 'vscode' | 'other' | string;
   readiness_score: number;
   checkpoint_count?: number;
   briefing_text: string;
@@ -55,7 +57,7 @@ export async function getSupabaseSession(): Promise<Session | null> {
 export async function getActiveRecoverySession(): Promise<RecoverySession | null> {
   const { data, error } = await supabase
     .from('critical_sessions')
-    .select('id, user_id, category, status, task_name, started_at, ended_at')
+    .select('id, user_id, category, application, status, task_name, started_at, ended_at')
     .eq('status', 'active')
     .order('started_at', { ascending: false })
     .limit(1)

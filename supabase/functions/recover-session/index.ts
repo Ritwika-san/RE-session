@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: sessionData, error: sessionError } = await supabase
       .from('critical_sessions')
-      .select('id, user_id, category, status, task_name, started_at, ended_at')
+      .select('id, user_id, category, application, status, task_name, started_at, ended_at')
       .eq('id', session_id)
       .single();
 
@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
       .select('*')
       .eq('session_id', session_id)
       .order('captured_at', { ascending: false })
-      .limit(10);
+      .limit(1000);
 
     if (checkpointError) {
       return jsonResponse({ error: 'Failed to load checkpoints' }, 500);
@@ -82,6 +82,7 @@ Deno.serve(async (req: Request) => {
 
     return jsonResponse({
       category: sessionData.category,
+      application: sessionData.application || 'browser',
       readiness_score: readinessScore,
       checkpoint_count: checkpointRows?.length || 0,
       briefing_text: briefing,

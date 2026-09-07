@@ -39,6 +39,25 @@ async function captureActiveScreenshot() {
   await captureAndUploadScreenshot(session, activeTabs[0], supabase);
 }
 
+async function captureSessionStart() {
+  const session = await readSession();
+  if (!session) return;
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.supabase);
+  const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
+  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tab = activeTabs[0];
+  const checkpointUploaded = await safeStoreUploadedCheckpoint(session, {
+    category: session.category,
+    application: session.application || 'browser',
+    summary: `Session started in ${session.application || 'browser'}`,
+    src: tab?.url || null,
+    title: tab?.title || null,
+    time: new Date().toISOString(),
+  });
+  if (checkpointUploaded) await markCheckpointCaptured();
+  await captureAndUploadScreenshot(session, tab, supabase);
+}
+
 async function readSession() {
   const { [STORAGE_KEYS.session]: session } = await chrome.storage.local.get(STORAGE_KEYS.session);
   return session || null;
@@ -88,7 +107,7 @@ async function setScreenshotStatus({ lastScreenshot, lastError = null }) {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.captureStatus);
   const status = stored[STORAGE_KEYS.captureStatus] || {};
   await chrome.storage.local.set({
-    [STORAGE_KEYS.captureStatus]: { ...status, active: true, lastScreenshot, lastError },
+    [STORAGE_KEYS.captureStatus]: { ...status, active: true, lastScreenshot: lastScreenshot || status.lastScreenshot || null, lastError },
   });
 }
 
@@ -188,7 +207,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'START_CAPTURE') {
-    chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
+    chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.5 });
+    void captureSessionStart();
     sendResponse({ ok: true });
     return true;
   }
@@ -221,7 +241,10 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(async () => {
   const session = await readSession();
-  if (session) chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
+  if (session) {
+    chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.5 });
+    void captureSessionStart();
+  }
   if (session && ['code', 'autosave'].includes(session.category)) {
     await sendFolderWatcherMessage('START_FOLDER_WATCH');
   }

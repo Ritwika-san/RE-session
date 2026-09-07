@@ -31,6 +31,7 @@ const clock = ref(Date.now());
 const actionMessage = ref('');
 const currentRoute = ref(window.location.hash || '#/dashboard');
 let authSubscription: { unsubscribe: () => void } | undefined;
+let recoveryChannel: { unsubscribe: () => void } | undefined;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let ageRefreshTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -62,6 +63,7 @@ async function handleSignOut() {
     session.value = null;
     recovery.value = null;
     stopRecoveryRefresh();
+    stopRecoveryRealtime();
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unable to sign out';
   }
@@ -103,16 +105,19 @@ async function loadRecovery() {
 
 async function loadSessionAndRecovery() {
   try {
+    stopRecoveryRealtime();
     session.value = await getActiveRecoverySession();
     if (session.value) {
       await loadRecovery();
       startRecoveryRefresh();
+      startRecoveryRealtime(session.value.id);
     } else {
       recovery.value = null;
       sessionSignal.value = '';
       checkpointAt.value = null;
       recoveryError.value = '';
       stopRecoveryRefresh();
+      stopRecoveryRealtime();
     }
   } catch (error) {
     recoveryError.value = error instanceof Error ? error.message : 'Unable to load recovery data';
@@ -130,6 +135,25 @@ function stopRecoveryRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
     refreshTimer = undefined;
+  }
+}
+
+function startRecoveryRealtime(sessionId: string) {
+  recoveryChannel = supabase
+    .channel(`recovery-${sessionId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'checkpoints', filter: `session_id=eq.${sessionId}` }, () => {
+      void loadRecovery();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshots', filter: `session_id=eq.${sessionId}` }, () => {
+      void loadRecovery();
+    })
+    .subscribe();
+}
+
+function stopRecoveryRealtime() {
+  if (recoveryChannel) {
+    void recoveryChannel.unsubscribe();
+    recoveryChannel = undefined;
   }
 }
 
@@ -234,6 +258,7 @@ onMounted(async () => {
       recovery.value = null;
       recoveryError.value = '';
       stopRecoveryRefresh();
+      stopRecoveryRealtime();
     }
   });
   authSubscription = data.subscription;
@@ -255,6 +280,7 @@ onUnmounted(() => {
   window.removeEventListener('hashchange', handleHashChange);
   authSubscription?.unsubscribe();
   stopRecoveryRefresh();
+  stopRecoveryRealtime();
   if (ageRefreshTimer) clearInterval(ageRefreshTimer);
 });
 </script>
@@ -326,6 +352,10 @@ onUnmounted(() => {
         <div class="summary-block">
           <p class="eyebrow">Category</p>
           <h3>{{ normalizeCategory(activeCategory) }}</h3>
+        </div>
+        <div class="summary-block">
+          <p class="eyebrow">Application</p>
+          <h3>{{ session?.application === 'vscode' ? 'VS Code / local code' : session?.application === 'other' ? 'Other desktop app' : 'Browser / web app' }}</h3>
         </div>
         <div class="summary-block">
           <p class="eyebrow">Last checkpoint</p>

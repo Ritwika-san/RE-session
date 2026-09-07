@@ -10,6 +10,7 @@ const DIRECTORY_HANDLE_KEY = 'directory';
 const elements = {
   taskName: document.getElementById('taskName'),
   category: document.getElementById('category'),
+  application: document.getElementById('application'),
   toggleSession: document.getElementById('toggleSession'),
   setupControls: document.getElementById('setupControls'),
   deleteSession: document.getElementById('deleteSession'),
@@ -219,7 +220,7 @@ async function checkSessionState() {
   elements.captureInfo.textContent = isActive ? 'Capturing code, form, email, and screenshot updates' : 'No active capture';
   if (isActive) {
     elements.activeTask.textContent = sessionState.taskName;
-    elements.activeMeta.textContent = `${formatCategory(sessionState.category)} · Started ${formatTime(sessionState.startedAt)}`;
+    elements.activeMeta.textContent = `${formatCategory(sessionState.category)} · ${formatApplication(sessionState.application)} · Started ${formatTime(sessionState.startedAt)}`;
     elements.activeCheckpoint.textContent = formatCheckpoint(captureStatus.lastCheckpoint);
     elements.activeCapture.textContent = captureStatus.lastError
       ? `Error: ${captureStatus.lastError}`
@@ -230,6 +231,10 @@ async function checkSessionState() {
 
 function formatCategory(category) {
   return { doc_notion: 'Doc / Notion', autosave: 'Autosave' }[category] || `${category.charAt(0).toUpperCase()}${category.slice(1)}`;
+}
+
+function formatApplication(application) {
+  return { browser: 'Browser', vscode: 'VS Code / local', other: 'Other app' }[application] || 'Browser';
 }
 
 function formatTime(value) {
@@ -283,6 +288,7 @@ async function startSession() {
     id: crypto.randomUUID(),
     taskName,
     category,
+    application: elements.application.value,
     startedAt: new Date().toISOString(),
     status: 'active',
     userId: authSession.user.id,
@@ -294,6 +300,7 @@ async function startSession() {
       id: session.id,
       task_name: session.taskName,
       category: session.category,
+      application: session.application,
       status: session.status,
       started_at: session.startedAt,
       user_id: session.userId,
@@ -304,12 +311,6 @@ async function startSession() {
   }
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: null } });
-  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (activeTabs[0]?.id !== undefined) {
-    chrome.tabs.sendMessage(activeTabs[0].id, { type: 'CAPTURE_NOW' }, () => {
-      void chrome.runtime.lastError;
-    });
-  }
   chrome.runtime.sendMessage({ type: 'START_CAPTURE' });
   if (isFolderCategory()) chrome.runtime.sendMessage({ type: 'START_FOLDER_WATCH' });
   elements.lastCheckpoint.textContent = 'Waiting for first checkpoint';
