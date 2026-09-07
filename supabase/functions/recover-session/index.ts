@@ -84,6 +84,7 @@ Deno.serve(async (req: Request) => {
       checkpoint_data: latestCheckpoint,
       latest_screenshot_url: screenshotUrl,
       last_checkpoint_ago: lastCheckpointTime ? formatRelative(lastCheckpointTime) : null,
+      last_checkpoint_at: lastCheckpointTime,
     });
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);

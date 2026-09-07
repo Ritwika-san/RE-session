@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import CodeEditor from './components/CodeEditor.vue';
-import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, formatRelativeTime, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
 import { clampWithBand, getReadinessColor } from './lib/utils';
 
 const authEmail = ref('');
@@ -26,12 +26,20 @@ const answerSheet = ref([
 const emailDraft = ref('Hi team,\n\nI am finalizing the handoff for the prototype and wanted to confirm that the latest update is ready.');
 const attachmentUrl = ref('https://example.com/download-file.pdf');
 const sessionSignal = ref('');
+const checkpointAt = ref<string | null>(null);
+const clock = ref(Date.now());
 const actionMessage = ref('');
+const currentRoute = ref(window.location.hash || '#/dashboard');
 let authSubscription: { unsubscribe: () => void } | undefined;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let ageRefreshTimer: ReturnType<typeof setInterval> | undefined;
 
 const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
 const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
+const sessionSignalDisplay = computed(() => {
+  clock.value;
+  return checkpointAt.value ? formatRelativeTime(checkpointAt.value) : sessionSignal.value || 'No checkpoint yet';
+});
 
 async function handleSignIn() {
   isAuthLoading.value = true;
@@ -71,9 +79,17 @@ async function loadRecovery() {
     recovery.value = result;
     activeCategory.value = result.category || 'code';
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
+    checkpointAt.value = result.last_checkpoint_at || null;
     codeSource.value = result.checkpoint_data?.draft ? String(result.checkpoint_data.draft) : '';
-    actionMessage.value = result.last_checkpoint_ago
-      ? `Task recovered from the latest checkpoint (${result.last_checkpoint_ago}).`
+    const recoveredFields = result.checkpoint_data?.fields;
+    if (Array.isArray(recoveredFields) && recoveredFields.length > 0) {
+      answerSheet.value = recoveredFields.map((field: { name?: string; value?: string }) => ({
+        label: field.name || 'Field',
+        value: field.value || '',
+      }));
+    }
+    actionMessage.value = result.last_checkpoint_at || result.last_checkpoint_ago
+      ? 'Task recovered from the latest checkpoint.'
       : 'Task loaded, but no checkpoint has been captured yet.';
   } catch (error) {
     recovery.value = null;
@@ -93,6 +109,7 @@ async function loadSessionAndRecovery() {
     } else {
       recovery.value = null;
       sessionSignal.value = '';
+      checkpointAt.value = null;
       recoveryError.value = '';
       stopRecoveryRefresh();
     }
@@ -115,9 +132,22 @@ function stopRecoveryRefresh() {
   }
 }
 
+function navigateTo(route: string) {
+  window.location.hash = route;
+}
+
 function reviewCategory(category: RecoveryCategory) {
   activeCategory.value = category;
-  actionMessage.value = `Showing ${normalizeCategory(category).toLowerCase()} recovery.`;
+  navigateTo(`/recover/${category}`);
+}
+
+async function recoverTask() {
+  if (!recovery.value) await loadRecovery();
+  if (recovery.value) reviewCategory(recovery.value.category || activeCategory.value);
+}
+
+function goToDashboard() {
+  navigateTo('/dashboard');
 }
 
 function sendEmail() {
@@ -180,7 +210,19 @@ function normalizeCategory(category: RecoveryCategory) {
   }[category] ?? 'Unknown';
 }
 
+function handleHashChange() {
+  currentRoute.value = window.location.hash || '#/dashboard';
+  const routeCategory = currentRoute.value.match(/^#\/recover\/(code|form)$/)?.[1] as RecoveryCategory | undefined;
+  if (routeCategory) activeCategory.value = routeCategory;
+}
+
 onMounted(async () => {
+  ageRefreshTimer = setInterval(() => {
+    clock.value = Date.now();
+  }, 1000);
+  window.addEventListener('hashchange', handleHashChange);
+  handleHashChange();
+
   const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => {
     if (!isAuthReady.value) return;
     user.value = currentSession?.user ?? null;
@@ -209,8 +251,10 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('hashchange', handleHashChange);
   authSubscription?.unsubscribe();
   stopRecoveryRefresh();
+  if (ageRefreshTimer) clearInterval(ageRefreshTimer);
 });
 </script>
 
@@ -277,14 +321,14 @@ onUnmounted(() => {
 
       <p v-if="recoveryError" class="status-error">{{ recoveryError }}</p>
 
-      <section class="panel summary-panel">
+      <section v-if="currentRoute === '#/dashboard'" class="panel summary-panel">
         <div class="summary-block">
           <p class="eyebrow">Category</p>
           <h3>{{ normalizeCategory(activeCategory) }}</h3>
         </div>
         <div class="summary-block">
           <p class="eyebrow">Last checkpoint</p>
-          <h3>{{ sessionSignal || 'No checkpoint yet' }}</h3>
+          <h3>{{ sessionSignalDisplay }}</h3>
         </div>
         <div class="summary-block">
           <p class="eyebrow">Latest briefing</p>
@@ -292,7 +336,7 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="panel actions-panel">
+      <section v-if="currentRoute === '#/dashboard'" class="panel actions-panel">
         <div class="thumbnail-wrap">
           <img
             v-if="recovery?.latest_screenshot_url"
@@ -302,7 +346,7 @@ onUnmounted(() => {
           <div v-else class="empty-thumb">No screenshot captured</div>
         </div>
         <div class="action-stack">
-          <button class="primary-button" @click="loadRecovery" :disabled="isLoading || !session">
+          <button class="primary-button" @click="recoverTask" :disabled="isLoading || !session">
             {{ isLoading ? 'Recovering…' : 'Recover this task' }}
           </button>
           <button class="secondary-button" @click="reviewCategory('code')">Review code</button>
@@ -311,6 +355,9 @@ onUnmounted(() => {
       </section>
 
       <section class="panel view-panel">
+        <div v-if="currentRoute !== '#/dashboard'" class="view-heading">
+          <button class="secondary-button" @click="goToDashboard">Back to task</button>
+        </div>
         <div v-if="activeCategory === 'code'" class="category-view">
           <h3>Code recovery</h3>
           <div v-if="codeSource" class="editor-shell">

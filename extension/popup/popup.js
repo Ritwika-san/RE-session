@@ -41,6 +41,7 @@ const elements = {
 
 let directoryHandle = null;
 let authSession = null;
+let displayRefreshTimer = null;
 
 function openDirectoryDatabase() {
   return new Promise((resolve, reject) => {
@@ -222,7 +223,8 @@ async function checkSessionState() {
     elements.activeCheckpoint.textContent = formatCheckpoint(captureStatus.lastCheckpoint);
     elements.activeCapture.textContent = captureStatus.lastError
       ? `Error: ${captureStatus.lastError}`
-      : captureStatus.active ? 'Capturing' : 'Waiting';
+      : captureStatus.lastScreenshot ? `Capturing · Screenshot ${formatCheckpoint(captureStatus.lastScreenshot)}`
+        : captureStatus.active ? 'Capturing' : 'Waiting';
   }
 }
 
@@ -369,6 +371,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   await restoreDirectoryHandle();
   await syncFolderUi();
   await syncUi();
+  displayRefreshTimer = setInterval(() => {
+    void checkSessionState();
+  }, 1000);
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local' && (changes[STORAGE_KEYS.session] || changes[STORAGE_KEYS.captureStatus])) {
       void checkSessionState();

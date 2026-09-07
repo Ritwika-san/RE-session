@@ -12,6 +12,7 @@
     "unlimitedStorage"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://*.google.com/*",
     "https://*.gmail.com/*",
     "https://*.supabase.co/*",
@@ -35,10 +36,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://mail.google.com/*",
-        "https://*.google.com/*",
-        "http://localhost:5173/*",
-        "http://127.0.0.1:5173/*"
+        "<all_urls>"
       ],
       "js": ["content-scripts/capture.js"],
       "run_at": "document_idle"

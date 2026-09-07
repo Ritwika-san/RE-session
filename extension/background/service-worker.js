@@ -49,13 +49,26 @@ async function setCaptureError(message) {
 }
 
 async function markCheckpointCaptured() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.captureStatus);
+  const status = stored[STORAGE_KEYS.captureStatus] || {};
   await chrome.storage.local.set({
-    [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: new Date().toISOString(), lastError: null },
+    [STORAGE_KEYS.captureStatus]: { ...status, active: true, lastCheckpoint: new Date().toISOString(), lastError: null },
+  });
+}
+
+async function setScreenshotStatus({ lastScreenshot, lastError = null }) {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.captureStatus);
+  const status = stored[STORAGE_KEYS.captureStatus] || {};
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.captureStatus]: { ...status, active: true, lastScreenshot, lastError },
   });
 }
 
 async function captureAndUploadScreenshot(session, tab, supabase) {
-  if (!tab?.windowId) return;
+  if (tab?.windowId === undefined) {
+    await setScreenshotStatus({ lastScreenshot: null, lastError: 'No browser tab was available for screenshot capture' });
+    return false;
+  }
 
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
@@ -72,8 +85,13 @@ async function captureAndUploadScreenshot(session, tab, supabase) {
       storage_path: path,
       captured_at: new Date().toISOString(),
     });
+    await setScreenshotStatus({ lastScreenshot: new Date().toISOString() });
+    return true;
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Screenshot capture or upload failed';
+    await setScreenshotStatus({ lastScreenshot: null, lastError: message });
     console.warn('RE-session screenshot capture failed', error);
+    return false;
   }
 }
 

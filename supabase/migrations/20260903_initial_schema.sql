@@ -35,6 +35,10 @@ create table if not exists public.screenshots (
   captured_at timestamptz not null default now()
 );
 
+insert into storage.buckets (id, name, public)
+values ('re-session-storage', 're-session-storage', false)
+on conflict (id) do update set public = false;
+
 alter table public.critical_sessions enable row level security;
 alter table public.checkpoints enable row level security;
 alter table public.screenshots enable row level security;
@@ -102,5 +106,45 @@ create policy "screenshots_delete_own_rows"
   on public.screenshots
   for delete
   using (auth.uid() = user_id);
+
+create policy "re_session_storage_insert_own_objects"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 're-session-storage'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "re_session_storage_select_own_objects"
+  on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 're-session-storage'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "re_session_storage_update_own_objects"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 're-session-storage'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 're-session-storage'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "re_session_storage_delete_own_objects"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 're-session-storage'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 create publication if not exists supabase_realtime for table public.checkpoints;

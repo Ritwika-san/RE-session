@@ -42,6 +42,7 @@ export type RecoveryPayload = {
   checkpoint_data?: Record<string, any>;
   latest_screenshot_url?: string | null;
   last_checkpoint_ago?: string;
+  last_checkpoint_at?: string | null;
   attachments?: Array<{ name: string; url: string }>; 
 };
 

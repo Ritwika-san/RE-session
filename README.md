@@ -21,7 +21,7 @@ RE-session is a safety-net continuity system for critical digital work. It start
 1. Create a Supabase project.
 2. Enable Email/Password Auth.
 3. Apply the migration from supabase/migrations/.
-4. Create a private bucket named re-session-storage.
+4. Apply the migration to create the private `re-session-storage` bucket and its ownership policies.
 5. Deploy both Edge Functions:
    - recover-session
    - cleanup-expired-data
