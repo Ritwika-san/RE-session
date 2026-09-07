@@ -53,8 +53,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Failed to load checkpoints' }, 500);
     }
 
-    const latestCheckpoint = checkpointRows?.[0]?.payload || {};
-    const lastCheckpointTime = checkpointRows?.[0]?.captured_at || null;
+    const isCodeCheckpoint = (payload: Record<string, unknown>) =>
+      sessionData.category !== 'code' || Boolean(payload.draft || payload.content || payload.file_path);
+    const relevantCheckpoint = checkpointRows?.find((row) => isCodeCheckpoint(row.payload || {}));
+    const latestCheckpoint = relevantCheckpoint?.payload || {};
+    const lastCheckpointTime = relevantCheckpoint?.captured_at || null;
     const latestScreenshot = await supabase
       .from('screenshots')
       .select('storage_path')
@@ -68,7 +71,7 @@ Deno.serve(async (req: Request) => {
       ? await getSignedUrl(supabase, screenshotPath)
       : null;
 
-    const hasCheckpoint = Boolean(checkpointRows?.length);
+    const hasCheckpoint = Boolean(relevantCheckpoint);
     const freshness = hasCheckpoint ? clamp(100 - getAgeInMinutes(lastCheckpointTime), 0, 100) : 0;
     const completeness = hasCheckpoint ? 88 : 0;
     const readinessScore = hasCheckpoint

@@ -82,6 +82,6 @@ function stopWatching() {
 }
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type === 'START_FOLDER_WATCH') startWatching();
-  if (message?.type === 'STOP_FOLDER_WATCH') stopWatching();
+  if (message?.type === 'FOLDER_WATCH_COMMAND' && message.command === 'START_FOLDER_WATCH') startWatching();
+  if (message?.type === 'FOLDER_WATCH_COMMAND' && message.command === 'STOP_FOLDER_WATCH') stopWatching();
 });

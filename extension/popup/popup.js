@@ -268,6 +268,11 @@ async function startSession() {
     return;
   }
 
+  if (isFolderCategory() && !await refreshFolderPermission({ requestPermission: true })) {
+    setError('Choose a code folder before starting this session.');
+    return;
+  }
+
   const config = await loadSupabaseConfig();
   if (!config.url || !config.anonKey || !authSession?.user?.id) {
     setError('Sign in before starting a Critical Session.');
@@ -299,6 +304,13 @@ async function startSession() {
   }
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: null } });
+  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (activeTabs[0]?.id !== undefined) {
+    chrome.tabs.sendMessage(activeTabs[0].id, { type: 'CAPTURE_NOW' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+  chrome.runtime.sendMessage({ type: 'START_CAPTURE' });
   if (isFolderCategory()) chrome.runtime.sendMessage({ type: 'START_FOLDER_WATCH' });
   elements.lastCheckpoint.textContent = 'Waiting for first checkpoint';
   await checkSessionState();
@@ -315,6 +327,7 @@ async function endSession() {
   const endedSession = { ...session, status: 'ended', endedAt: new Date().toISOString() };
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: null });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: false, lastCheckpoint: null } });
+  chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' });
   chrome.runtime.sendMessage({ type: 'STOP_FOLDER_WATCH' });
   elements.lastCheckpoint.textContent = 'No checkpoint yet';
   clearError();

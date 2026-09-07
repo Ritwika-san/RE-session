@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   captureStatus: 're_session_capture_status',
 };
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
+const SCREENSHOT_ALARM = 're-session-screenshot';
 
 async function ensureFolderWatcher() {
   if (!chrome.offscreen) return;
@@ -23,10 +24,19 @@ async function ensureFolderWatcher() {
 async function sendFolderWatcherMessage(type) {
   try {
     await ensureFolderWatcher();
-    await chrome.runtime.sendMessage({ type });
+    await chrome.runtime.sendMessage({ type: 'FOLDER_WATCH_COMMAND', command: type });
   } catch (error) {
     console.warn(`RE-session folder watcher ${type} failed`, error);
   }
+}
+
+async function captureActiveScreenshot() {
+  const session = await readSession();
+  if (!session) return;
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.supabase);
+  const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
+  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  await captureAndUploadScreenshot(session, activeTabs[0], supabase);
 }
 
 async function readSession() {
@@ -45,12 +55,13 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   }
 
   try {
-    await supabase.from('checkpoints').insert({
+    const { error } = await supabase.from('checkpoints').insert({
       session_id: session.id,
       user_id: authSession.user.id,
       payload,
       captured_at: new Date().toISOString(),
     });
+    if (error) throw new Error(error.message || 'Checkpoint insert failed');
     return true;
   } catch (error) {
     await setCaptureError(error instanceof Error ? error.message : 'Checkpoint upload failed');
@@ -138,9 +149,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         const stored = await chrome.storage.local.get(STORAGE_KEYS.supabase);
         const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
+        const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const captureTab = activeTabs[0] || sender?.tab;
         const [checkpointUploaded, screenshotUploaded] = await Promise.all([
           safeStoreUploadedCheckpoint(session, { summary: 'Form/email snapshot', ...message.payload }),
-          captureAndUploadScreenshot(session, sender?.tab, supabase),
+          captureAndUploadScreenshot(session, captureTab, supabase),
         ]);
         if (checkpointUploaded) await markCheckpointCaptured();
         sendResponse({ ok: checkpointUploaded || screenshotUploaded, checkpointUploaded, screenshotUploaded });
@@ -168,13 +181,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'START_FOLDER_WATCH') {
+    chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
     void sendFolderWatcherMessage('START_FOLDER_WATCH');
     sendResponse({ ok: true });
     return true;
   }
 
+  if (message?.type === 'START_CAPTURE') {
+    chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (message?.type === 'STOP_FOLDER_WATCH') {
+    chrome.alarms.clear(SCREENSHOT_ALARM);
     void sendFolderWatcherMessage('STOP_FOLDER_WATCH');
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === 'STOP_CAPTURE') {
+    chrome.alarms.clear(SCREENSHOT_ALARM);
     sendResponse({ ok: true });
     return true;
   }
@@ -194,7 +221,12 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(async () => {
   const session = await readSession();
+  if (session) chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
   if (session && ['code', 'autosave'].includes(session.category)) {
     await sendFolderWatcherMessage('START_FOLDER_WATCH');
   }
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === SCREENSHOT_ALARM) void captureActiveScreenshot();
 });
