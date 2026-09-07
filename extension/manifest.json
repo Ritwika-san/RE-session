@@ -9,7 +9,8 @@
     "scripting",
     "tabs",
     "downloads",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -22,6 +23,9 @@
   ],
   "background": {
     "service_worker": "background/service-worker.js"
+  },
+  "offscreen": {
+    "pages": ["offscreen/offscreen.html"]
   },
   "action": {
     "default_title": "RE-session",

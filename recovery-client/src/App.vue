@@ -34,8 +34,8 @@ let authSubscription: { unsubscribe: () => void } | undefined;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let ageRefreshTimer: ReturnType<typeof setInterval> | undefined;
 
-const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
-const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? session.value?.readiness ?? 0));
+const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? 0));
+const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? 0));
 const sessionSignalDisplay = computed(() => {
   clock.value;
   return checkpointAt.value ? formatRelativeTime(checkpointAt.value) : sessionSignal.value || 'No checkpoint yet';
@@ -80,7 +80,8 @@ async function loadRecovery() {
     activeCategory.value = result.category || 'code';
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
     checkpointAt.value = result.last_checkpoint_at || null;
-    codeSource.value = result.checkpoint_data?.draft ? String(result.checkpoint_data.draft) : '';
+    const recoveredDraft = result.checkpoint_data?.draft ?? result.checkpoint_data?.content;
+    codeSource.value = recoveredDraft ? String(recoveredDraft) : '';
     const recoveredFields = result.checkpoint_data?.fields;
     if (Array.isArray(recoveredFields) && recoveredFields.length > 0) {
       answerSheet.value = recoveredFields.map((field: { name?: string; value?: string }) => ({

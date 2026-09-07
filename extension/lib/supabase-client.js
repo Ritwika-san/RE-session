@@ -87,7 +87,8 @@ function createSupabaseClient(config) {
       from(bucket) {
         return {
           async upload(path, body, contentType) {
-            return request(`/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
+            const encodedPath = path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+            return request(`/storage/v1/object/${bucket}/${encodedPath}`, {
               method: 'POST',
               headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
               body,

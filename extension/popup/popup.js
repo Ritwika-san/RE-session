@@ -294,6 +294,7 @@ async function startSession() {
   });
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: null } });
+  if (isFolderCategory()) chrome.runtime.sendMessage({ type: 'START_FOLDER_WATCH' });
   elements.lastCheckpoint.textContent = 'Waiting for first checkpoint';
   await checkSessionState();
   clearError();
@@ -309,6 +310,7 @@ async function endSession() {
   const endedSession = { ...session, status: 'ended', endedAt: new Date().toISOString() };
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: null });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: false, lastCheckpoint: null } });
+  chrome.runtime.sendMessage({ type: 'STOP_FOLDER_WATCH' });
   elements.lastCheckpoint.textContent = 'No checkpoint yet';
   clearError();
 
