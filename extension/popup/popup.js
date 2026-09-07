@@ -284,14 +284,19 @@ async function startSession() {
   };
 
   const supabase = createSupabaseClient(config);
-  await supabase.from('critical_sessions').insert({
-    id: session.id,
-    task_name: session.taskName,
-    category: session.category,
-    status: session.status,
-    started_at: session.startedAt,
-    user_id: session.userId,
-  });
+  try {
+    await supabase.from('critical_sessions').insert({
+      id: session.id,
+      task_name: session.taskName,
+      category: session.category,
+      status: session.status,
+      started_at: session.startedAt,
+      user_id: session.userId,
+    });
+  } catch (error) {
+    setError(error instanceof Error ? error.message : 'Unable to create the session in Supabase.');
+    return;
+  }
   await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
   await chrome.storage.local.set({ [STORAGE_KEYS.captureStatus]: { active: true, lastCheckpoint: null } });
   if (isFolderCategory()) chrome.runtime.sendMessage({ type: 'START_FOLDER_WATCH' });

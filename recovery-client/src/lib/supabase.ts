@@ -38,6 +38,7 @@ export type RecoverySession = {
 export type RecoveryPayload = {
   category: RecoveryCategory;
   readiness_score: number;
+  checkpoint_count?: number;
   briefing_text: string;
   checkpoint_data?: Record<string, any>;
   latest_screenshot_url?: string | null;
@@ -96,7 +97,12 @@ export async function fetchRecoveryForSession(sessionId: string): Promise<Recove
     throw new Error(message);
   }
 
-  return data as RecoveryPayload;
+  const result = data as RecoveryPayload;
+  const hasCheckpointPayload = Boolean(result.checkpoint_data && Object.keys(result.checkpoint_data).length > 0);
+  if (result.checkpoint_count === 0 || (!result.last_checkpoint_at && !hasCheckpointPayload)) {
+    result.readiness_score = 0;
+  }
+  return result;
 }
 
 export async function runPistonCode(language: string, source: string) {

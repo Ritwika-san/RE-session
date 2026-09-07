@@ -80,6 +80,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       category: sessionData.category,
       readiness_score: readinessScore,
+      checkpoint_count: checkpointRows?.length || 0,
       briefing_text: briefing,
       checkpoint_data: latestCheckpoint,
       latest_screenshot_url: screenshotUrl,

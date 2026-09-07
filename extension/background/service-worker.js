@@ -38,24 +38,19 @@ async function safeStoreUploadedCheckpoint(session, payload) {
   const config = (await chrome.storage.local.get(STORAGE_KEYS.supabase))[STORAGE_KEYS.supabase] || {};
   const supabase = createSupabaseClient(config);
   const { data: { session: authSession } } = await supabase.auth.getSession();
-  if (!config.url || !config.anonKey || !config.userId || !authSession?.access_token) {
+  if (!config.url || !config.anonKey || !authSession?.access_token || !authSession.user?.id) {
     await setCaptureError('Extension authentication or Supabase settings are missing');
     console.warn('RE-session: missing auth, checkpoint skipped');
     return false;
   }
 
   try {
-    const { error } = await supabase.from('checkpoints').insert({
+    await supabase.from('checkpoints').insert({
       session_id: session.id,
-      user_id: config.userId,
+      user_id: authSession.user.id,
       payload,
       captured_at: new Date().toISOString(),
     });
-    if (error) {
-      await setCaptureError(error.message || 'Checkpoint upload failed');
-      console.error('RE-session checkpoint upload failed', error);
-      return false;
-    }
     return true;
   } catch (error) {
     await setCaptureError(error instanceof Error ? error.message : 'Checkpoint upload failed');
@@ -113,9 +108,10 @@ async function captureAndUploadScreenshot(session, tab, supabase) {
     if (upload.error) throw new Error(upload.error.message || 'Screenshot upload failed');
 
     const config = (await chrome.storage.local.get(STORAGE_KEYS.supabase))[STORAGE_KEYS.supabase] || {};
+    const { data: { session: authSession } } = await supabase.auth.getSession();
     const { error } = await supabase.from('screenshots').insert({
       session_id: session.id,
-      user_id: config.userId,
+      user_id: authSession?.user?.id || config.userId,
       storage_path: path,
       captured_at: new Date().toISOString(),
     });
