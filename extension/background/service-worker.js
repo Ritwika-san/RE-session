@@ -130,13 +130,15 @@ async function captureAndUploadScreenshot(session, tab, supabase) {
       throw new Error(`The active page cannot be captured: ${tab.url || 'unknown URL'}`);
     }
     const window = await chrome.windows.get(tab.windowId);
-    if (!window.focused) {
-      throw new Error(`The target window is not focused (window ${tab.windowId})`);
+    if (window.state === 'minimized') {
+      throw new Error(`The target window is minimized (window ${tab.windowId})`);
     }
+    // Deliberately NOT requiring the browser window/tab to be focused or
+    // active - the whole point is capturing state while the user has switched
+    // to VS Code or another app. captureVisibleTab works on a background
+    // window as long as it's visible on screen, and the <all_urls> host
+    // permission already covers the gesture requirement.
     const currentTab = tab.id === undefined ? tab : await chrome.tabs.get(tab.id);
-    if (!currentTab.active) {
-      throw new Error(`The target tab is not active in window ${tab.windowId}`);
-    }
     console.info('RE-session capturing visible tab', { tabId: currentTab.id, windowId: tab.windowId, url: tab.url });
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     const imageResponse = await fetch(dataUrl);
