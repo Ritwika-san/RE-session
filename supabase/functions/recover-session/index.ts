@@ -87,6 +87,7 @@ Deno.serve(async (req: Request) => {
       checkpoint_count: checkpointRows?.length || 0,
       briefing_text: briefing,
       checkpoint_data: latestCheckpoint,
+      source: typeof latestCheckpoint.source === 'string' ? latestCheckpoint.source : null,
       latest_screenshot_url: screenshotUrl,
       last_checkpoint_ago: lastCheckpointTime ? formatRelative(lastCheckpointTime) : null,
       last_checkpoint_at: lastCheckpointTime,

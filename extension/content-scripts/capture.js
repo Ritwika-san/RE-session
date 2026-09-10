@@ -14,6 +14,7 @@ function getFormSnapshot() {
   if (!form) {
     return {
       src: location.href,
+      source: location.hostname,
       title: document.title,
       time: new Date().toISOString(),
     };
@@ -34,7 +35,7 @@ function getFormSnapshot() {
     return acc;
   }, []);
 
-  return { src: location.href, fields: entries, time: new Date().toISOString() };
+  return { src: location.href, source: location.hostname, fields: entries, time: new Date().toISOString() };
 }
 
 function sendCapture(data) {
@@ -53,6 +54,35 @@ function captureSnapshot() {
 if (chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'CAPTURE_NOW') captureSnapshot();
+  });
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== 'REFILL_FORM') return false;
+
+    const form = document.querySelector('form');
+    const fields = Array.isArray(message.payload?.fields) ? message.payload.fields : [];
+    if (!form) {
+      sendResponse({ success: false, error: 'no_form_found' });
+      return false;
+    }
+
+    const controls = Array.from(form.elements).filter((field) =>
+      field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement,
+    );
+    let filledCount = 0;
+    for (const field of fields) {
+      const fieldName = String(field?.name || '');
+      const control = controls.find((candidate) => candidate.name === fieldName)
+        || controls.find((candidate) => candidate.id === fieldName)
+        || controls.find((candidate) => candidate.getAttribute('placeholder') === fieldName);
+      if (!control || isSensitiveField(control)) continue;
+      control.value = field.value == null ? '' : String(field.value);
+      control.dispatchEvent(new Event('input', { bubbles: true }));
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      filledCount += 1;
+    }
+    sendResponse({ success: filledCount > 0 });
+    return false;
   });
 }
 

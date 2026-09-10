@@ -1,17 +1,18 @@
 :root {
-  --bg: #EEF0EE;
-  --ink: #1C1E1C;
-  --surface: #FFFFFF;
-  --border: #D8DBD8;
-  --accent-safe: #2F6F5E;
-  --accent-warning: #B5651D;
+  --bg: #14181C;
+  --ink: #F6F5F1;
+  --surface: #1E2328;
+  --border: #3A3F45;
+  --muted: #888780;
+  --accent-safe: #639922;
+  --accent-warning: #D85A30;
   --panel-shadow: 0 0 0 1px var(--border);
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
   background: var(--bg);
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light;
+  color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -92,7 +93,7 @@ h3 {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.76rem;
-  color: rgba(28, 30, 28, 0.72);
+  color: var(--muted);
   margin-bottom: 0.35rem;
 }
 
@@ -131,7 +132,7 @@ h3 {
   padding-left: 1.4rem;
   display: grid;
   gap: 0.6rem;
-  color: rgba(28, 30, 28, 0.82);
+  color: var(--muted);
 }
 
 .auth-panel label,
@@ -208,16 +209,18 @@ textarea {
 .readiness-card strong {
   font-size: clamp(2rem, 4vw, 2.8rem);
   line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, "Fira Code", Menlo, monospace;
 }
 
 .readiness-band {
   display: inline-block;
-  background: rgba(28, 30, 28, 0.04);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0.3rem 0.7rem;
   text-transform: capitalize;
   font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, "Fira Code", Menlo, monospace;
 }
 
 .readiness-band.high {
@@ -243,7 +246,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 0.8rem;
   overflow: hidden;
-  background: rgba(28, 30, 28, 0.03);
+  background: var(--bg);
   display: grid;
   place-items: center;
 }
@@ -256,7 +259,7 @@ textarea {
 }
 
 .empty-thumb {
-  color: rgba(28, 30, 28, 0.6);
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -273,6 +276,23 @@ textarea {
   gap: 1rem;
 }
 
+.sync-status {
+  color: var(--accent-safe);
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, "Fira Code", Menlo, monospace;
+}
+
+.sync-status.syncing {
+  color: var(--accent-warning);
+}
+
+.checkpoint-badge {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, "Fira Code", Menlo, monospace;
+}
+
 textarea {
   min-height: 180px;
 }
@@ -285,7 +305,7 @@ textarea {
 }
 
 .output-box {
-  background: rgba(28, 30, 28, 0.03);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0.8rem;
   padding: 1rem;
@@ -306,13 +326,14 @@ textarea {
   font-size: 0.72rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(28, 30, 28, 0.68);
+  color: var(--muted);
   margin-bottom: 0.2rem;
 }
 
 .answer-value {
   font-size: 1rem;
   word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, "Fira Code", Menlo, monospace;
 }
 
 .copy-button {
@@ -328,14 +349,14 @@ textarea {
 }
 
 .small-note {
-  color: rgba(28, 30, 28, 0.68);
+  color: var(--muted);
 }
 
 .autosave-card {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   padding: 0.85rem 1rem;
-  background: rgba(28, 30, 28, 0.02);
+  background: var(--bg);
 }
 
 @media (max-width: 768px) {

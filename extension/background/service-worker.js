@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
 };
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const SCREENSHOT_ALARM = 're-session-screenshot';
+const PENDING_EDITS_ALARM = 'PENDING_EDITS_ALARM';
 
 async function ensureFolderWatcher() {
   if (!chrome.offscreen) return;
@@ -27,6 +28,67 @@ async function sendFolderWatcherMessage(type) {
     await chrome.runtime.sendMessage({ type: 'FOLDER_WATCH_COMMAND', command: type });
   } catch (error) {
     console.warn(`RE-session folder watcher ${type} failed`, error);
+  }
+}
+
+async function updatePendingEdit(supabase, row, changes) {
+  await supabase.from('pending_edits').update(changes, `id=eq.${row.id}`);
+}
+
+async function processPendingEdits() {
+  const session = await readSession();
+  if (!session?.id) return;
+
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.supabase);
+  const supabase = createSupabaseClient(stored[STORAGE_KEYS.supabase] || {});
+  const result = await supabase.from('pending_edits').select('*', `session_id=eq.${session.id}&applied=eq.false`);
+  const rows = result.data || [];
+
+  for (const row of rows) {
+    if (row.category === 'code') {
+      try {
+        await ensureFolderWatcher();
+        const response = await chrome.runtime.sendMessage({ type: 'WRITE_FILE_COMMAND', payload: row.payload });
+        if (response?.success) {
+          await updatePendingEdit(supabase, row, { applied: true, error: null });
+        } else {
+          await updatePendingEdit(supabase, row, { applied: true, error: response?.error || 'write_failed' });
+        }
+      } catch (error) {
+        await updatePendingEdit(supabase, row, { applied: true, error: error instanceof Error ? error.message : 'write_failed' });
+      }
+      continue;
+    }
+
+    if (row.category === 'form') {
+      let tabs = [];
+      try {
+        const origin = new URL(row.payload?.url).origin;
+        tabs = await chrome.tabs.query({ url: `${origin}/*` });
+      } catch {
+        tabs = [];
+      }
+
+      if (tabs.length === 0) {
+        await updatePendingEdit(supabase, row, { applied: true, error: 'no_tab_open' });
+        continue;
+      }
+
+      let successfulSends = 0;
+      for (const tab of tabs) {
+        if (tab.id === undefined) continue;
+        try {
+          await chrome.tabs.sendMessage(tab.id, { type: 'REFILL_FORM', payload: row.payload });
+          successfulSends += 1;
+        } catch {
+          // Tabs can close or lack the content script while the alarm is running.
+        }
+      }
+      await updatePendingEdit(supabase, row, {
+        applied: true,
+        error: successfulSends > 0 ? null : 'refill_failed',
+      });
+    }
   }
 }
 
@@ -211,6 +273,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'START_FOLDER_WATCH') {
     chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.25 });
+    chrome.alarms.create(PENDING_EDITS_ALARM, { periodInMinutes: 0.25 });
     void sendFolderWatcherMessage('START_FOLDER_WATCH');
     sendResponse({ ok: true });
     return true;
@@ -218,6 +281,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'START_CAPTURE') {
     chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.5 });
+    chrome.alarms.create(PENDING_EDITS_ALARM, { periodInMinutes: 0.25 });
     void captureSessionStart();
     sendResponse({ ok: true });
     return true;
@@ -225,6 +289,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'STOP_FOLDER_WATCH') {
     chrome.alarms.clear(SCREENSHOT_ALARM);
+    chrome.alarms.clear(PENDING_EDITS_ALARM);
     void sendFolderWatcherMessage('STOP_FOLDER_WATCH');
     sendResponse({ ok: true });
     return true;
@@ -232,6 +297,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === 'STOP_CAPTURE') {
     chrome.alarms.clear(SCREENSHOT_ALARM);
+    chrome.alarms.clear(PENDING_EDITS_ALARM);
     sendResponse({ ok: true });
     return true;
   }
@@ -253,6 +319,7 @@ chrome.runtime.onStartup.addListener(async () => {
   const session = await readSession();
   if (session) {
     chrome.alarms.create(SCREENSHOT_ALARM, { periodInMinutes: 0.5 });
+    chrome.alarms.create(PENDING_EDITS_ALARM, { periodInMinutes: 0.25 });
     void captureSessionStart();
   }
   if (session && ['code', 'autosave'].includes(session.category)) {
@@ -262,4 +329,5 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SCREENSHOT_ALARM) void captureActiveScreenshot();
+  if (alarm.name === PENDING_EDITS_ALARM) void processPendingEdits();
 });

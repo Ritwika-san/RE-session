@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import CodeEditor from './components/CodeEditor.vue';
-import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, formatRelativeTime, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, formatRelativeTime, pushPendingEdit, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { clampWithBand, getReadinessColor } from './lib/utils';
 
 const authEmail = ref('');
@@ -17,13 +18,18 @@ const user = ref<any>(null);
 const activeCategory = ref<RecoveryCategory>('code');
 const codeSource = ref('');
 const codeEditorDirty = ref(false);
+const formFields = ref([
+  { name: 'Full name', value: 'Jordan Rivers' },
+  { name: 'Email', value: 'jordan.rivers@example.com' },
+  { name: 'Reason for application', value: 'Critical restart and continuity test' },
+]);
+const formFieldsDirty = ref(false);
+const codeSyncing = ref(false);
+const formSyncing = ref(false);
+const formSyncLoading = ref(false);
+const formSyncMessage = ref('');
 const runOutput = ref('');
 const runLoading = ref(false);
-const answerSheet = ref([
-  { label: 'Full name', value: 'Jordan Rivers' },
-  { label: 'Email', value: 'jordan.rivers@example.com' },
-  { label: 'Reason for application', value: 'Critical restart and continuity test' },
-]);
 const emailDraft = ref('Hi team,\n\nI am finalizing the handoff for the prototype and wanted to confirm that the latest update is ready.');
 const attachmentUrl = ref('https://example.com/download-file.pdf');
 const sessionSignal = ref('');
@@ -32,15 +38,23 @@ const clock = ref(Date.now());
 const actionMessage = ref('');
 const currentRoute = ref(window.location.hash || '#/dashboard');
 let authSubscription: { unsubscribe: () => void } | undefined;
-let recoveryChannel: { unsubscribe: () => void } | undefined;
+let recoveryChannel: RealtimeChannel | undefined;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let ageRefreshTimer: ReturnType<typeof setInterval> | undefined;
+let codeSyncTimer: ReturnType<typeof setTimeout> | undefined;
+let formSyncTimer: ReturnType<typeof setTimeout> | undefined;
+let formSyncTimeout: ReturnType<typeof setTimeout> | undefined;
+let hasSetInitialCategory = false;
 
 const readinessBand = computed(() => clampWithBand(recovery.value?.readiness_score ?? 0));
 const readinessColor = computed(() => getReadinessColor(recovery.value?.readiness_score ?? 0));
 const sessionSignalDisplay = computed(() => {
   clock.value;
   return checkpointAt.value ? formatRelativeTime(checkpointAt.value) : sessionSignal.value || 'No checkpoint yet';
+});
+const checkpointBadge = computed(() => {
+  clock.value;
+  return `Updated in ${recovery.value?.source || 'this device'} · ${formatRelativeTime(checkpointAt.value)}`;
 });
 
 async function handleSignIn() {
@@ -80,17 +94,21 @@ async function loadRecovery() {
     const currentSession = session.value;
     const result = await fetchRecoveryForSession(currentSession.id);
     recovery.value = result;
-    activeCategory.value = result.category || 'code';
+    if (!hasSetInitialCategory) {
+      activeCategory.value = result.category || 'code';
+      hasSetInitialCategory = true;
+    }
     sessionSignal.value = result.last_checkpoint_ago || 'No checkpoint yet';
     checkpointAt.value = result.last_checkpoint_at || null;
     const recoveredDraft = result.checkpoint_data?.draft ?? result.checkpoint_data?.content;
     if (!codeEditorDirty.value) codeSource.value = recoveredDraft ? String(recoveredDraft) : '';
     const recoveredFields = result.checkpoint_data?.fields;
     if (Array.isArray(recoveredFields) && recoveredFields.length > 0) {
-      answerSheet.value = recoveredFields.map((field: { name?: string; value?: string }) => ({
-        label: field.name || 'Field',
+      formFields.value = recoveredFields.map((field: { name?: string; value?: string }) => ({
+        name: field.name || 'Field',
         value: field.value || '',
       }));
+      formFieldsDirty.value = false;
     }
     actionMessage.value = result.last_checkpoint_at || result.last_checkpoint_ago
       ? 'Task recovered from the latest checkpoint.'
@@ -107,6 +125,7 @@ async function loadRecovery() {
 async function loadSessionAndRecovery() {
   try {
     await stopRecoveryRealtime();
+    hasSetInitialCategory = false;
     session.value = await getActiveRecoverySession();
     if (session.value) {
       await loadRecovery();
@@ -149,12 +168,28 @@ function startRecoveryRealtime(sessionId: string) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshots', filter: `session_id=eq.${sessionId}` }, () => {
       void loadRecovery();
     })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pending_edits', filter: `session_id=eq.${sessionId}` }, (payload) => {
+      const edit = payload.new as { category?: string; applied?: boolean; error?: string | null };
+      if (edit.category === 'form' && edit.applied === true) {
+        if (formSyncTimeout) clearTimeout(formSyncTimeout);
+        formSyncLoading.value = false;
+        if (edit.error === null) {
+          formSyncMessage.value = `Filled in ${recovery.value?.source || 'the form'}`;
+        } else if (edit.error === 'no_tab_open') {
+          formSyncMessage.value = "That page isn't open in any tab right now. Open it and try again.";
+        } else if (edit.error === 'refill_failed') {
+          formSyncMessage.value = "Found the page, but couldn't fill it in. Try refreshing that tab first.";
+        } else {
+          formSyncMessage.value = 'Something went wrong sending your answers. Try again.';
+        }
+      }
+    })
     .subscribe();
 }
 
 async function stopRecoveryRealtime() {
   if (recoveryChannel) {
-    await recoveryChannel.unsubscribe();
+    await supabase.removeChannel(recoveryChannel);
     recoveryChannel = undefined;
   }
 }
@@ -222,6 +257,62 @@ function handleCodeChange(value: string) {
   codeSource.value = value;
 }
 
+function scheduleCodeSync() {
+  if (codeSyncTimer) clearTimeout(codeSyncTimer);
+  codeSyncTimer = setTimeout(async () => {
+    if (!session.value) return;
+    codeSyncing.value = true;
+    try {
+      await pushPendingEdit(session.value.id, 'code', {
+        file_path: recovery.value?.file_path ?? 'recovered.js',
+        content: codeSource.value,
+      });
+    } catch (error) {
+      recoveryError.value = error instanceof Error ? error.message : 'Unable to sync code edit';
+    } finally {
+      codeSyncing.value = false;
+    }
+  }, 800);
+}
+
+function scheduleFormSync() {
+  if (formSyncTimer) clearTimeout(formSyncTimer);
+  formSyncTimer = setTimeout(async () => {
+    if (!session.value) return;
+    formSyncing.value = true;
+    try {
+      await pushPendingEdit(session.value.id, 'form', {
+        url: recovery.value?.checkpoint_data?.src,
+        fields: formFields.value,
+      });
+    } catch (error) {
+      recoveryError.value = error instanceof Error ? error.message : 'Unable to sync form edit';
+    } finally {
+      formSyncing.value = false;
+    }
+  }, 800);
+}
+
+async function fillFormNow() {
+  if (!session.value) return;
+  formSyncLoading.value = true;
+  formSyncMessage.value = 'Sending your answers to the form…';
+  try {
+    await pushPendingEdit(session.value.id, 'form', {
+      url: recovery.value?.checkpoint_data?.src,
+      fields: formFields.value.map((item) => ({ name: item.name, value: item.value })),
+    });
+    if (formSyncTimeout) clearTimeout(formSyncTimeout);
+    formSyncTimeout = setTimeout(() => {
+      formSyncMessage.value = 'No response from the extension. Make sure it\'s installed and a session is active.';
+      formSyncLoading.value = false;
+    }, 20_000);
+  } catch (error) {
+    formSyncMessage.value = error instanceof Error ? error.message : 'Unable to send your answers to the form.';
+    formSyncLoading.value = false;
+  }
+}
+
 function downloadAttachment() {
   const anchor = document.createElement('a');
   anchor.href = attachmentUrl.value;
@@ -247,6 +338,14 @@ function handleHashChange() {
   const routeCategory = currentRoute.value.match(/^#\/recover\/(code|form)$/)?.[1] as RecoveryCategory | undefined;
   if (routeCategory) activeCategory.value = routeCategory;
 }
+
+watch(codeSource, () => {
+  if (codeEditorDirty.value) scheduleCodeSync();
+});
+
+watch(formFields, () => {
+  if (formFieldsDirty.value && session.value) scheduleFormSync();
+}, { deep: true });
 
 onMounted(async () => {
   ageRefreshTimer = setInterval(() => {
@@ -289,6 +388,9 @@ onUnmounted(() => {
   authSubscription?.unsubscribe();
   stopRecoveryRefresh();
   stopRecoveryRealtime();
+  if (codeSyncTimer) clearTimeout(codeSyncTimer);
+  if (formSyncTimer) clearTimeout(formSyncTimer);
+  if (formSyncTimeout) clearTimeout(formSyncTimeout);
   if (ageRefreshTimer) clearInterval(ageRefreshTimer);
 });
 </script>
@@ -398,7 +500,9 @@ onUnmounted(() => {
           <button class="secondary-button" @click="goToDashboard">Back to task</button>
         </div>
         <div v-if="activeCategory === 'code'" class="category-view">
+          <span class="checkpoint-badge">{{ checkpointBadge }}</span>
           <h3>Code recovery</h3>
+          <span class="sync-status" :class="{ syncing: codeSyncing }">{{ codeSyncing ? 'Syncing…' : 'Synced to your device' }}</span>
           <div v-if="codeSource" class="editor-shell">
             <CodeEditor :model-value="codeSource" @update:model-value="handleCodeChange" />
           </div>
@@ -429,14 +533,18 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="activeCategory === 'form'" class="category-view answer-sheet-view">
+          <span class="checkpoint-badge">{{ checkpointBadge }}</span>
           <h3>Recovered form answer sheet</h3>
-          <div v-for="item in answerSheet" :key="item.label" class="answer-row">
+          <span class="sync-status" :class="{ syncing: formSyncing }">{{ formSyncing ? 'Syncing…' : 'Synced to your device' }}</span>
+          <div v-for="item in formFields" :key="item.name" class="answer-row">
             <div>
-              <span class="answer-label">{{ item.label }}</span>
-              <div class="answer-value">{{ item.value }}</div>
+              <span class="answer-label">{{ item.name }}</span>
+              <input v-model="item.value" class="answer-value" @input="formFieldsDirty = true" />
             </div>
             <button class="copy-button" @click="copyAnswer(item.value)">Copy</button>
           </div>
+          <button class="primary-button" :disabled="formSyncLoading" @click="fillFormNow">Fill form now</button>
+          <p v-if="formSyncMessage" class="small-note">{{ formSyncMessage }}</p>
           <div class="button-row">
             <button class="secondary-button" @click="openOriginalSite">Open original site</button>
             <button class="secondary-button" @click="downloadAttachment">Download recovered file</button>

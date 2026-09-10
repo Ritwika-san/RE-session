@@ -62,7 +62,7 @@ async function pollFolder() {
     console.info('RE-session code checkpoint detected', { path: latest.path, modified: latest.modified });
     chrome.runtime.sendMessage({
       type: 'FILE_CHECKPOINT',
-      payload: { category: 'code', summary: `Latest file: ${latest.path}`, draft: latest.content, file_path: latest.path, modified_at: new Date(latest.modified).toISOString() },
+      payload: { category: 'code', source: 'VS Code', summary: `Latest file: ${latest.path}`, draft: latest.content, file_path: latest.path, modified_at: new Date(latest.modified).toISOString() },
     }).catch((error) => console.error('RE-session code checkpoint send failed', error));
   } catch (error) {
     console.error('RE-session folder checkpoint poll failed', error);
@@ -81,7 +81,33 @@ function stopWatching() {
   lastCheckpoint = '';
 }
 
+async function writeFileCommand(payload) {
+  try {
+    const directory = await loadDirectoryHandle();
+    if (!directory) return { success: false, error: 'no_folder_selected' };
+
+    const permission = await directory.queryPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') return { success: false, error: 'permission_not_granted' };
+
+    const files = await collectFiles(directory);
+    const matchingFile = files.find((file) => file.path === payload?.file_path);
+    const fileHandle = matchingFile?.entry || await directory.getFileHandle(payload.file_path, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(payload.content);
+    await writable.close();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'FOLDER_WATCH_COMMAND' && message.command === 'START_FOLDER_WATCH') startWatching();
   if (message?.type === 'FOLDER_WATCH_COMMAND' && message.command === 'STOP_FOLDER_WATCH') stopWatching();
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== 'WRITE_FILE_COMMAND') return false;
+  writeFileCommand(message.payload).then(sendResponse);
+  return true;
 });

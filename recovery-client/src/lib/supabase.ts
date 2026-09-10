@@ -40,6 +40,9 @@ export type RecoveryPayload = {
   category: RecoveryCategory;
   application?: 'browser' | 'vscode' | 'other' | string;
   readiness_score: number;
+  file_path?: string;
+  form_url?: string;
+  source?: string | null;
   checkpoint_count?: number;
   briefing_text: string;
   checkpoint_data?: Record<string, any>;
@@ -52,6 +55,26 @@ export type RecoveryPayload = {
 export async function getSupabaseSession(): Promise<Session | null> {
   const { data } = await supabase.auth.getSession();
   return data.session;
+}
+
+export async function pushPendingEdit(
+  sessionId: string,
+  category: 'code' | 'form',
+  payload: object,
+): Promise<void> {
+  const row = {
+    session_id: sessionId,
+    user_id: (await getSupabaseSession())?.user.id,
+    category,
+    payload,
+    applied: false,
+    created_at: new Date().toISOString(),
+  };
+  const { error } = await supabase
+    .from('pending_edits')
+    .upsert(row, { onConflict: 'session_id,category' });
+
+  if (error) throw new Error(error.message);
 }
 
 export async function getActiveRecoverySession(): Promise<RecoverySession | null> {

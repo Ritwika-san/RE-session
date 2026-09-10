@@ -68,6 +68,16 @@ function createSupabaseClient(config) {
     },
     from(table) {
       return {
+        async select(columns = '*', filter = '') {
+          const query = new URLSearchParams({ select: columns });
+          if (filter) {
+            for (const part of filter.split('&')) {
+              const [key, value] = part.split('=');
+              if (key && value !== undefined) query.set(key, value);
+            }
+          }
+          return request(`/rest/v1/${table}?${query.toString()}`, { method: 'GET' });
+        },
         async insert(row) {
           return request(`/rest/v1/${table}`, {
             method: 'POST',
