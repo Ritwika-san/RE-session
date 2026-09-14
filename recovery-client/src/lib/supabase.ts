@@ -98,6 +98,14 @@ export async function signInWithEmail(email: string, password: string): Promise<
   return data.user;
 }
 
+export async function signUpWithEmail(email: string, password: string): Promise<User | null> {
+  ensureSupabaseConfig();
+
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
 export async function signOutUser(): Promise<void> {
   const { error } = await supabase.auth.signOut();
   if (error) throw new Error(error.message);

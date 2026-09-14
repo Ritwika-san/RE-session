@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import CodeEditor from './components/CodeEditor.vue';
-import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, formatRelativeTime, pushPendingEdit, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
+import { supabase, getSupabaseSession, getActiveRecoverySession, signInWithEmail, signUpWithEmail, signOutUser, fetchRecoveryForSession, runPistonCode, formatRelativeTime, pushPendingEdit, type RecoveryPayload, type RecoveryCategory, type RecoverySession } from './lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { clampWithBand, getReadinessColor } from './lib/utils';
 
@@ -11,6 +11,8 @@ const isAuthReady = ref(false);
 const isLoading = ref(false);
 const isAuthLoading = ref(false);
 const authError = ref('');
+const isSignUpMode = ref(false);
+const authInfo = ref('');
 const recoveryError = ref('');
 const session = ref<RecoverySession | null>(null);
 const recovery = ref<RecoveryPayload | null>(null);
@@ -66,6 +68,23 @@ async function handleSignIn() {
     await loadSessionAndRecovery();
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unable to sign in';
+  } finally {
+    isAuthLoading.value = false;
+  }
+}
+
+async function handleSignUp() {
+  isAuthLoading.value = true;
+  authError.value = '';
+  authInfo.value = '';
+  try {
+    await signUpWithEmail(authEmail.value, authPassword.value);
+    if (!user.value) {
+      authInfo.value = 'Account created. Check your email to confirm, then sign in.';
+      isSignUpMode.value = false;
+    }
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Unable to create account';
   } finally {
     isAuthLoading.value = false;
   }
@@ -415,7 +434,7 @@ onUnmounted(() => {
 
     <main v-else-if="!user" class="auth-panel">
       <div class="panel">
-        <h2>Sign in to continue</h2>
+        <h2>{{ isSignUpMode ? 'Create your account' : 'Sign in to continue' }}</h2>
         <label>
           Email
           <input v-model="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -424,10 +443,14 @@ onUnmounted(() => {
           Password
           <input v-model="authPassword" type="password" autocomplete="current-password" placeholder="Your Supabase password" />
         </label>
-        <button class="primary-button" :disabled="isAuthLoading" @click="handleSignIn">
-          {{ isAuthLoading ? 'Signing in…' : 'Sign in' }}
+        <button class="primary-button" :disabled="isAuthLoading" @click="isSignUpMode ? handleSignUp() : handleSignIn()">
+          {{ isSignUpMode ? (isAuthLoading ? 'Creating account…' : 'Create account') : (isAuthLoading ? 'Signing in…' : 'Sign in') }}
         </button>
         <p v-if="authError" class="status-error">{{ authError }}</p>
+        <p v-if="authInfo" class="status-message">{{ authInfo }}</p>
+        <button class="text-link" type="button" @click="isSignUpMode = !isSignUpMode; authError = ''; authInfo = ''">
+          {{ isSignUpMode ? 'Already have an account? Sign in' : 'New here? Create an account' }}
+        </button>
       </div>
     </main>
 

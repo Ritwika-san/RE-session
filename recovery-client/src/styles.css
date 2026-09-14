@@ -171,10 +171,24 @@ textarea {
   background: var(--surface);
 }
 
+.text-link {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-safe);
+  text-align: left;
+}
+
 .status-error {
   margin-top: 0.9rem;
   color: var(--accent-warning);
   font-weight: 600;
+}
+
+.status-message {
+  margin-top: 0.9rem;
+  color: var(--accent-safe);
 }
 
 .dashboard {
